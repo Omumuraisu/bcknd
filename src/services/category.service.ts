@@ -1,21 +1,21 @@
-export const getCategoriesByVendorId = async (vendorId: number) => {
-    const categories = await prisma.category.findMany({
-        where: {
-            vendorId,
-        },
-    });
+import { prisma } from "../lib/prisma";
 
-    return categories;
-}
+export const getCategoriesByVendorId = async (vendorId: number) => {
+	const categories = await prisma.category.findMany({
+		where: {
+			vendorId,
+		},
+	});
+
+	return categories;
+};
 
 export const getCategoryProducts = async (categoryId: number) => {
-    const products = await prisma.product.findMany({
-        where: {
-            categoryId,
-        },
-    });
+	const products = await prisma.product.findMany({
+		where: {
+			categoryId,
+		},
+	});
 
-    return products;
-}
-
-export const 
+	return products;
+};

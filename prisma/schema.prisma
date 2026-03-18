@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+
+model businessOwner {
+  business_owner_id BigInt @id @default(autoincrement())
+  name              String
+
+  businesses business[]
+}
+
+model business {
+  business_id       BigInt @id @default(autoincrement())
+  business_owner_id BigInt
+  stall_id          BigInt
+  name              String
+
+  owner   businessOwner @relation(fields: [business_owner_id], references: [business_owner_id])
+  vendors vendor[]
+
+  // many businesses belong to one stall
+  stall stall @relation("stall_businesses", fields: [stall_id], references: [stall_id])
+
+  // optional back-reference for "this business is active in these stalls" (normally 0 or 1)
+  active_in_stalls stall[] @relation("stall_active_business")
+
+  // products offered by this business
+  products product[]
+
+  @@index([business_owner_id])
+  @@index([stall_id])
+}
+
+model stall {
+  stall_id     BigInt @id @default(autoincrement())
+  name         String
+  stall_number Int
+  stall_width  Float
+  stall_height Float
+  // violations?
+  monthly_rent Float
+  rent_status  String
+  // vendor_list?
+
+  // all businesses under this stall
+  businesses business[] @relation("stall_businesses")
+
+  // the single active business for this stall
+  active_business_id BigInt
+  active_business    business @relation("stall_active_business", fields: [active_business_id], references: [business_id])
+
+  // violations for this stall
+  violations violation[]
+
+  @@index([active_business_id])
+}
+
+model vendor {
+  vendor_id   BigInt @id @default(autoincrement())
+  business_id BigInt
+  name        String
+
+  business business @relation(fields: [business_id], references: [business_id])
+
+  @@index([business_id])
+}
+
+model zone {
+  zone_id      BigInt @id @default(autoincrement())
+  name         String
+  no_of_stalls Int
+
+  @@index([name])
+}
+
+model violation {
+  violation_id BigInt @id @default(autoincrement())
+  stall_id     BigInt
+  interest     Float
+
+  stall stall @relation(fields: [stall_id], references: [stall_id])
+
+  @@index([stall_id])
+}
+
+model transactions {
+  transaction_id BigInt   @id @default(autoincrement())
+  owner_id       BigInt
+  sale_datetime  DateTime @db.Timestamp(0)
+  total_amount   Float    @db.Real
+
+  user users @relation(fields: [owner_id], references: [id])
+
+  @@index([owner_id])
+}
+
+model product {
+  product_id BigInt @id @default(autoincrement())
+  name       String
+  price      Float
+
+  business_id BigInt
+  business    business @relation(fields: [business_id], references: [business_id])
+
+  tarrif_id BigInt
+  tariff    tariff @relation(fields: [tarrif_id], references: [tarrif_id])
+
+  @@index([name])
+}
+
+model tarrif {
+  tarrif_id   BigInt @id @default(autoincrement())
+  name        String
+  tarrif_rate Float
+
+  products product[]
+
+  @@index([name])
+}
+
+model delivery_ticket_fee {
+  ticket_id BigInt @id @default(autoincrement())
+  // Im not sure about this....
+}
+
+model hub_staff {
+  hubstaff_id     BigInt   @id @default(autoincrement())
+  full_name       String
+  contact_number  String
+  account_status  String
+  account_created DateTime @db.Timestamp(0)
+}
+
+model queueing_ticket {
+  ticket_id       BigInt     @id @default(autoincrement())
+  vehicle_type    String
+  time_of_arrival DateTime   @db.Timestamp(0)
+  waiting_time    Int
+  status          String
+  issued_by       BigInt
+  issued_by_admin leeo_admin @relation(fields: [issued_by], references: [admin_id])
+}
+
+model leeo_admin {
+  admin_id        BigInt   @id @default(autoincrement())
+  full_name       String
+  contact_number  String
+  account_status  String
+  account_created DateTime @db.Timestamp(0)
+}
+
+model users {
+  id           BigInt         @id @default(autoincrement())
+  name         String
+  transactions transactions[]
+}
