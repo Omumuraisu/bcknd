@@ -17,7 +17,7 @@ app.route("/transactions", transactionRoutes)
 
 serve({
   fetch: app.fetch,
-  port: PORT
+  port: Number (PORT)
 }, (info) => {
   console.log(`Server is running on http://localhost:${info.port}`)
 })

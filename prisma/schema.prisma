@@ -7,13 +7,66 @@ datasource db {
   provider = "postgresql"
 }
 
+enum BusinessType {
+  Produce
+  Services
+  Food_Stall 
+  Clothing
+  Electronics
+  Vendor_Stall
+}
+
+enum AdminRole {
+  Head_Admin
+  Administration_Staff
+  Market_in_Charge
+}
+
+enum AccountStatus {
+  Pending_activation
+  Active
+  Disabled
+}
+
+enum RentStatus {
+  Paid
+  Unpaid
+  Overdue
+}
+
+enum Role {
+  Admin
+  Business_Owner
+  Vendor
+  Delivery_Operator
+}
+
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 
+model Account {
+  account_id      BigInt @id @default(autoincrement())
+  phone           String   @unique
+  email           String
+  password        String
+  role            Role
+  created_at      DateTime @db.Timestamp(0)
+
+  businessOwner businessOwner?
+  hubStaff     hub_staff?
+  leeoAdmin    leeo_admin?
+}
+
 model businessOwner {
   business_owner_id BigInt @id @default(autoincrement())
-  name              String
+  account_id        BigInt @unique
+  first_name         String
+  last_name          String
+  contact_number     String
+  email              String
+  created_at         DateTime @db.Timestamp(0)
 
+  account   Account @relation(fields: [account_id], references: [account_id])
   businesses business[]
 }
 
@@ -21,7 +74,9 @@ model business {
   business_id       BigInt @id @default(autoincrement())
   business_owner_id BigInt
   stall_id          BigInt
-  name              String
+  business_name     String
+  business_type     BusinessType
+  lease_date        String
 
   owner   businessOwner @relation(fields: [business_owner_id], references: [business_owner_id])
   vendors vendor[]
@@ -47,7 +102,7 @@ model stall {
   stall_height Float
   // violations?
   monthly_rent Float
-  rent_status  String
+  rent_status  RentStatus
   // vendor_list?
 
   // all businesses under this stall
@@ -64,9 +119,12 @@ model stall {
 }
 
 model vendor {
-  vendor_id   BigInt @id @default(autoincrement())
-  business_id BigInt
-  name        String
+  vendor_id         BigInt @id @default(autoincrement())
+  business_id       BigInt
+  first_name        String
+  last_name         String
+  contact_number    String
+  created_at      DateTime @db.Timestamp(0)
 
   business business @relation(fields: [business_id], references: [business_id])
 
@@ -111,7 +169,7 @@ model product {
   business    business @relation(fields: [business_id], references: [business_id])
 
   tarrif_id BigInt
-  tariff    tariff @relation(fields: [tarrif_id], references: [tarrif_id])
+  tariff    tarrif @relation(fields: [tarrif_id], references: [tarrif_id])
 
   @@index([name])
 }
@@ -133,10 +191,14 @@ model delivery_ticket_fee {
 
 model hub_staff {
   hubstaff_id     BigInt   @id @default(autoincrement())
-  full_name       String
+  account_id      BigInt   @unique
+  first_name      String
+  last_name       String
   contact_number  String
-  account_status  String
-  account_created DateTime @db.Timestamp(0)
+  created_at      DateTime @db.Timestamp(0)
+  
+
+  account Account @relation(fields: [account_id], references: [account_id])
 }
 
 model queueing_ticket {
@@ -146,15 +208,19 @@ model queueing_ticket {
   waiting_time    Int
   status          String
   issued_by       BigInt
-  issued_by_admin leeo_admin @relation(fields: [issued_by], references: [admin_id])
+  
 }
 
 model leeo_admin {
   admin_id        BigInt   @id @default(autoincrement())
+  account_id      BigInt   @unique
   full_name       String
   contact_number  String
   account_status  String
-  account_created DateTime @db.Timestamp(0)
+  created_at      DateTime @db.Timestamp(0)
+
+  account         Account          @relation(fields: [account_id], references: [account_id])
+  
 }
 
 model users {
