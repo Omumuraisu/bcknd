@@ -10,11 +10,13 @@
 		"@hono/node-server": "^1.19.11",
 		"@prisma/adapter-pg": "^7.5.0",
 		"@prisma/client": "^7.5.0",
+		"bcrypt": "^6.0.0",
 		"dotenv": "^17.3.1",
 		"hono": "^4.12.8",
 		"pg": "^8.20.0"
 	},
 	"devDependencies": {
+		"@types/bcrypt": "^6.0.0",
 		"@types/dotenv": "^6.1.1",
 		"@types/node": "^20.11.17",
 		"@types/pg": "^8.18.0",
