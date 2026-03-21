@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import transactionRoutes from './routes/transaction.route.js'
 import busOwnerRoutes from './routes/bus-owner.route.js'
 import vendorRoutes from './routes/vendor.route.js'
+import stallRoutes from './routes/stall.route.js'
 
 dotenv.config()
 
@@ -18,10 +19,11 @@ app.get('/', (c) => {
 app.route("/transactions", transactionRoutes)
 app.route("/api/business-owners", busOwnerRoutes)
 app.route("/api/vendor", vendorRoutes)
+app.route("/api/stalls", stallRoutes)
 
 serve({
   fetch: app.fetch,
-  port: Number (PORT)
+  port: Number(PORT)
 }, (info) => {
   console.log(`Server is running on http://localhost:${info.port}`)
 })

@@ -1,8 +1,18 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { createUser, getUsers, getUserById, updateUser, deleteUser, } from '../services/admin-services/bus-owner.service.js';
 const userRoutes = new Hono();
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// Set ADMIN_FRONTEND_URL in .env (e.g. http://localhost:5173) to restrict origin
+userRoutes.use('*', cors({
+    origin: process.env.ADMIN_FRONTEND_URL ?? '*',
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+}));
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const toJsonSafe = (value) => JSON.parse(JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
-//get all users
+// ── Routes ────────────────────────────────────────────────────────────────────
+// GET all business owners
 userRoutes.get('/', async (c) => {
     try {
         const users = await getUsers();
@@ -13,14 +23,13 @@ userRoutes.get('/', async (c) => {
         return c.json({ error: 'Failed to fetch users' }, 500);
     }
 });
-//get user by id
+// GET business owner by id
 userRoutes.get('/:id', async (c) => {
     try {
-        const id = Number(c.req.param('id'));
+        const id = BigInt(c.req.param('id'));
         const user = await getUserById(id);
-        if (!user) {
+        if (!user)
             return c.json({ error: 'User not found' }, 404);
-        }
         return c.json({ user: toJsonSafe(user) });
     }
     catch (error) {
@@ -28,7 +37,7 @@ userRoutes.get('/:id', async (c) => {
         return c.json({ error: 'Failed to fetch user' }, 500);
     }
 });
-//create
+// POST create business owner
 userRoutes.post('/', async (c) => {
     try {
         const body = await c.req.json();
@@ -37,15 +46,17 @@ userRoutes.post('/', async (c) => {
     }
     catch (error) {
         console.error('POST /api/business-owners failed:', error);
-        return c.json({ error: 'Failed to create user', details: error }, 500);
+        return c.json({ error: 'Failed to create user', details: String(error) }, 500);
     }
 });
-//update user
+// PATCH update business owner profile (no password changes here)
 userRoutes.patch('/:id', async (c) => {
     try {
-        const id = Number(c.req.param('id'));
+        const id = BigInt(c.req.param('id'));
         const body = await c.req.json();
-        const updatedUser = await updateUser(id, body);
+        // Strip password if accidentally sent by the client
+        const { password: _pw, ...safeBody } = body;
+        const updatedUser = await updateUser(id, safeBody);
         return c.json({ user: toJsonSafe(updatedUser) });
     }
     catch (error) {
@@ -53,10 +64,10 @@ userRoutes.patch('/:id', async (c) => {
         return c.json({ error: 'Failed to update user' }, 500);
     }
 });
-//delete 
+// DELETE business owner (cascades vendors → businesses → businessOwner → account)
 userRoutes.delete('/:id', async (c) => {
     try {
-        const id = Number(c.req.param('id'));
+        const id = BigInt(c.req.param('id'));
         await deleteUser(id);
         return c.json({ message: 'User deleted successfully' });
     }

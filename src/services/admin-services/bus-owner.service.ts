@@ -50,11 +50,7 @@ export const createUser = async (data: CreateBusinessOwnerInput) => {
     include: {
       businessOwner: {
         include: {
-          businesses: {
-            include: {
-              vendors: true, // vendor[] lives under business, not businessOwner
-            },
-          },
+          businesses: true,
         },
       },
     },
@@ -75,9 +71,7 @@ export const getUsers = async () => {
     include: {
       businessOwner: {
         include: {
-          businesses: {
-            include: { vendors: true },
-          },
+          businesses: true,
         },
       },
     },
@@ -90,9 +84,7 @@ export const getUserById = async (id: number | string | bigint) => {
     include: {
       businessOwner: {
         include: {
-          businesses: {
-            include: { vendors: true },
-          },
+          businesses: true,
         },
       },
     },
@@ -120,9 +112,7 @@ export const updateUser = async (
     include: {
       businessOwner: {
         include: {
-          businesses: {
-            include: { vendors: true },
-          },
+          businesses: true,
         },
       },
     },
