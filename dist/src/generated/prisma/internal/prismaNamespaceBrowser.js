@@ -101,6 +101,7 @@ export const StallScalarFieldEnum = {
 };
 export const VendorScalarFieldEnum = {
     vendor_id: 'vendor_id',
+    account_id: 'account_id',
     business_id: 'business_id',
     first_name: 'first_name',
     last_name: 'last_name',

@@ -82,9 +82,6 @@ model business {
   owner   businessOwner @relation(fields: [business_owner_id], references: [business_owner_id])
   vendors vendor[]
 
-  // many businesses belong to one stall
-  stall stall @relation("stall_businesses", fields: [stall_id], references: [stall_id])
-
   // optional back-reference for "this business is active in these stalls" (normally 0 or 1)
   active_in_stalls stall[] @relation("stall_active_business")
 
@@ -105,9 +102,6 @@ model stall {
   monthly_rent Float
   rent_status  RentStatus
   // vendor_list?
-
-  // all businesses under this stall
-  businesses business[] @relation("stall_businesses")
 
   // the single active business for this stall
   active_business_id BigInt
