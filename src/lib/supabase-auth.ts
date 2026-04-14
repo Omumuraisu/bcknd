@@ -36,6 +36,14 @@ export type SupabaseVerifiedUser = {
   phone: string | null;
 };
 
+type SignInWithPasswordResult = {
+  ok: boolean;
+  error?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  user?: SupabaseVerifiedUser;
+};
+
 export const verifySupabaseAccessToken = async (
   accessToken: string
 ): Promise<SupabaseVerifiedUser | null> => {
@@ -52,4 +60,78 @@ export const verifySupabaseAccessToken = async (
     email: data.user.email ?? null,
     phone: data.user.phone ?? null,
   };
+};
+
+export const signInSupabaseWithEmailPassword = async (
+  email: string,
+  password: string
+): Promise<SignInWithPasswordResult> => {
+  if (!supabaseAuthClient) {
+    return {
+      ok: false,
+      error: 'Supabase auth client is not configured',
+    };
+  }
+
+  const { data, error } = await supabaseAuthClient.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error || !data.session || !data.user) {
+    return {
+      ok: false,
+      error: error?.message ?? 'Invalid credentials',
+    };
+  }
+
+  return {
+    ok: true,
+    accessToken: data.session.access_token,
+    refreshToken: data.session.refresh_token,
+    user: {
+      id: data.user.id,
+      email: data.user.email ?? null,
+      phone: data.user.phone ?? null,
+    },
+  };
+};
+
+export const sendSupabaseEmailOtp = async (email: string) => {
+  if (!supabaseAuthClient) {
+    throw new Error('Supabase auth client is not configured');
+  }
+
+  const { error } = await supabaseAuthClient.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Failed to send OTP');
+  }
+};
+
+export const verifySupabaseEmailOtp = async (email: string, token: string) => {
+  if (!supabaseAuthClient) {
+    throw new Error('Supabase auth client is not configured');
+  }
+
+  const { data, error } = await supabaseAuthClient.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+
+  if (error || !data.user) {
+    throw new Error(error?.message || 'Invalid or expired OTP');
+  }
+
+  return {
+    id: data.user.id,
+    email: data.user.email ?? null,
+    phone: data.user.phone ?? null,
+  } satisfies SupabaseVerifiedUser;
 };

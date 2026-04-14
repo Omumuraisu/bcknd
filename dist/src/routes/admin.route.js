@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Prisma } from '../generated/prisma/client';
-import { requireAdminCapability } from '../middleware/rbac.middleware.js';
-import { createPersonnel, deletePersonnel, getCurrentAdminProfile, listPersonnel, updateCurrentAdminProfile, updatePersonnel, } from '../services/admin-settings.service.js';
+import { canCreateAdminRole, requireAdminCapability } from '../middleware/rbac.middleware.js';
+import { createPersonnel, deletePersonnel, getCurrentAdminProfile, listPersonnel, normalizeIncomingAdminRole, updateCurrentAdminProfile, updatePersonnel, } from '../services/admin-settings.service.js';
 const adminRoute = new Hono();
 adminRoute.use('*', cors({
     origin: '*',
@@ -32,6 +32,12 @@ const toErrorResponse = (c, error) => {
         if (error.code === 'P2002') {
             return c.json({ error: 'Duplicate value for unique field', details: error.meta }, 409);
         }
+        if (error.code === 'P2003') {
+            return c.json({
+                error: 'Cannot delete personnel because related records still exist. Disable the account or remove related records first.',
+                details: error.meta,
+            }, 409);
+        }
         if (error.code === 'P2025') {
             return c.json({ error: 'Record not found' }, 404);
         }
@@ -60,6 +66,7 @@ adminRoute.patch('/profile', requireAdminCapability('admin:write'), async (c) =>
             lastName: payload.lastName,
             email: payload.email,
             role: payload.role,
+            profileImageUrl: payload.profileImageUrl ?? payload.profile_image ?? payload.avatar_url,
         });
         return c.json(profile, 200);
     }
@@ -78,7 +85,12 @@ adminRoute.get('/personnel', requireAdminCapability('admin:read'), async (c) => 
 });
 adminRoute.post('/personnel', requireAdminCapability('admin:write'), async (c) => {
     try {
+        const creatorAdminRole = c.get('adminRole');
         const payload = await c.req.json();
+        const targetAdminRole = normalizeIncomingAdminRole(payload.role);
+        if (!canCreateAdminRole(creatorAdminRole, targetAdminRole)) {
+            return c.json({ error: 'Insufficient admin permissions for requested role' }, 403);
+        }
         const personnel = await createPersonnel({
             firstName: payload.firstName,
             lastName: payload.lastName,

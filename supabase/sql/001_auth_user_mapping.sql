@@ -8,10 +8,21 @@ create table if not exists public.auth_profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
   phone text,
+  username text,
+  is_active boolean not null default true,
+  role text,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.auth_profiles add column if not exists username text;
+alter table public.auth_profiles add column if not exists is_active boolean not null default true;
+alter table public.auth_profiles add column if not exists role text;
+
+create unique index if not exists idx_auth_profiles_username_unique
+  on public.auth_profiles (lower(username))
+  where username is not null;
 
 alter table public.auth_profiles enable row level security;
 
@@ -37,11 +48,22 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.auth_profiles (id, email, phone, raw_user_meta_data)
-  values (new.id, new.email, new.phone, coalesce(new.raw_user_meta_data, '{}'::jsonb))
+  insert into public.auth_profiles (id, email, phone, username, is_active, role, raw_user_meta_data)
+  values (
+    new.id,
+    new.email,
+    new.phone,
+    nullif(lower(coalesce(new.raw_user_meta_data->>'username', '')), ''),
+    coalesce((new.raw_user_meta_data->>'is_active')::boolean, true),
+    nullif(new.raw_user_meta_data->>'role', ''),
+    coalesce(new.raw_user_meta_data, '{}'::jsonb)
+  )
   on conflict (id) do update
     set email = excluded.email,
         phone = excluded.phone,
+        username = coalesce(excluded.username, public.auth_profiles.username),
+        is_active = coalesce(excluded.is_active, public.auth_profiles.is_active),
+        role = coalesce(excluded.role, public.auth_profiles.role),
         raw_user_meta_data = excluded.raw_user_meta_data,
         updated_at = timezone('utc', now());
 

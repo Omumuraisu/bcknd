@@ -83,9 +83,6 @@ export const ModelName = {
     account_activation_otp: 'account_activation_otp',
     account_email_verification_otp: 'account_email_verification_otp',
     queueing_ticket: 'queueing_ticket',
-    sync_unloading_record: 'sync_unloading_record',
-    sync_ticket_record: 'sync_ticket_record',
-    sync_idempotency_ledger: 'sync_idempotency_ledger',
     leeo_admin: 'leeo_admin',
     users: 'users',
     audit_log_entries: 'audit_log_entries',
@@ -197,11 +194,33 @@ export const ProductScalarFieldEnum = {
 };
 export const TarrifScalarFieldEnum = {
     tarrif_id: 'tarrif_id',
+    tarrif_code: 'tarrif_code',
     name: 'name',
-    tarrif_rate: 'tarrif_rate'
+    category: 'category',
+    unit_options: 'unit_options',
+    tarrif_rate: 'tarrif_rate',
+    is_active: 'is_active',
+    created_at: 'created_at',
+    updated_at: 'updated_at'
 };
 export const Delivery_ticket_feeScalarFieldEnum = {
-    ticket_id: 'ticket_id'
+    ticket_id: 'ticket_id',
+    queue_ticket_id: 'queue_ticket_id',
+    queue_record_id: 'queue_record_id',
+    transaction_id: 'transaction_id',
+    ticket_no: 'ticket_no',
+    vehicle_number: 'vehicle_number',
+    vehicle_type: 'vehicle_type',
+    goods_type_summary: 'goods_type_summary',
+    unloading_time: 'unloading_time',
+    suggested_unloading_time: 'suggested_unloading_time',
+    total_amount: 'total_amount',
+    issued_at: 'issued_at',
+    issued_at_display: 'issued_at_display',
+    issued_by_account_id: 'issued_by_account_id',
+    sync_status: 'sync_status',
+    synced_at: 'synced_at',
+    items: 'items'
 };
 export const Hub_staffScalarFieldEnum = {
     hubstaff_id: 'hubstaff_id',
@@ -231,59 +250,17 @@ export const Account_email_verification_otpScalarFieldEnum = {
 };
 export const Queueing_ticketScalarFieldEnum = {
     ticket_id: 'ticket_id',
-    vehicle_type: 'vehicle_type',
-    time_of_arrival: 'time_of_arrival',
-    waiting_time: 'waiting_time',
-    status: 'status',
-    issued_by: 'issued_by'
-};
-export const Sync_unloading_recordScalarFieldEnum = {
-    id: 'id',
+    queue_record_id: 'queue_record_id',
     queue_number: 'queue_number',
     vehicle_number: 'vehicle_number',
     vehicle_type: 'vehicle_type',
     product_category: 'product_category',
-    started_at: 'started_at',
-    estimated_minutes: 'estimated_minutes',
-    completed_at: 'completed_at',
-    created_at: 'created_at',
-    updated_at: 'updated_at',
-    deleted_at: 'deleted_at',
-    version: 'version',
-    source_device_id: 'source_device_id',
-    last_idempotency_key: 'last_idempotency_key',
-    sync_status: 'sync_status'
-};
-export const Sync_ticket_recordScalarFieldEnum = {
-    id: 'id',
-    transaction_id: 'transaction_id',
-    ticket_no: 'ticket_no',
-    vehicle_number: 'vehicle_number',
-    vehicle_type: 'vehicle_type',
-    goods_type: 'goods_type',
-    unloading_time: 'unloading_time',
-    suggested_unloading_time: 'suggested_unloading_time',
-    total_amount: 'total_amount',
-    issued_at: 'issued_at',
-    items: 'items',
-    created_at: 'created_at',
-    updated_at: 'updated_at',
-    deleted_at: 'deleted_at',
-    version: 'version',
-    source_device_id: 'source_device_id',
-    last_idempotency_key: 'last_idempotency_key',
-    sync_status: 'sync_status'
-};
-export const Sync_idempotency_ledgerScalarFieldEnum = {
-    id: 'id',
-    idempotency_key: 'idempotency_key',
-    entity_type: 'entity_type',
-    operation: 'operation',
-    entity_id: 'entity_id',
-    request_hash: 'request_hash',
-    response_status: 'response_status',
-    response_payload: 'response_payload',
-    created_at: 'created_at'
+    time_of_arrival: 'time_of_arrival',
+    queue_date: 'queue_date',
+    status: 'status',
+    issued_by_account_id: 'issued_by_account_id',
+    sync_status: 'sync_status',
+    synced_at: 'synced_at'
 };
 export const Leeo_adminScalarFieldEnum = {
     admin_id: 'admin_id',
@@ -588,6 +565,9 @@ export const Auth_profilesScalarFieldEnum = {
     id: 'id',
     email: 'email',
     phone: 'phone',
+    username: 'username',
+    is_active: 'is_active',
+    role: 'role',
     raw_user_meta_data: 'raw_user_meta_data',
     created_at: 'created_at',
     updated_at: 'updated_at'
