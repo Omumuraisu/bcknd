@@ -1,12 +1,14 @@
+import './bootstrap-env.js'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
-import dotenv from 'dotenv'
 import transactionRoutes from './routes/transaction.route.js'
 import busOwnerRoutes from './routes/bus-owner.route.js'
 import vendorRoutes from './routes/vendor.route.js'
 import stallRoutes from './routes/stall.route.js'
-
-dotenv.config()
+import hubStaffRoutes from './routes/hub-staff.route.js'
+import authRoutes from './routes/auth.route.js'
+import adminRoutes from './routes/admin.route.js'
+import syncRoutes from './routes/sync.route.js'
 
 const PORT = process.env.PORT || 3000
 const app = new Hono()
@@ -17,9 +19,13 @@ app.get('/', (c) => {
 
 
 app.route("/transactions", transactionRoutes)
+app.route('/api/auth', authRoutes)
+app.route('/api/admin', adminRoutes)
+app.route('/api/sync', syncRoutes)
 app.route("/api/business-owners", busOwnerRoutes)
 app.route("/api/vendor", vendorRoutes)
 app.route("/api/stalls", stallRoutes)
+app.route("/api/hub-staff", hubStaffRoutes)
 
 serve({
   fetch: app.fetch,
