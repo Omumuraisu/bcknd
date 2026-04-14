@@ -1,0 +1,96 @@
+{
+  "info": {
+    "name": "Mobile Offline Sync Contracts",
+    "_postman_id": "bda8f338-2328-4c80-845b-253cd96a22ea",
+    "description": "Covers replay-safe idempotency, conflict responses, snapshots, and dashboard endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Ticket Upsert",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"{{idem_key_ticket}}\",\n  \"entityType\": \"tickets\",\n  \"operation\": \"upsert\",\n  \"entityId\": \"{{ticket_id}}\",\n  \"queuedAt\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"transaction_id\": \"{{transaction_id}}\",\n    \"ticket_no\": \"T-1001\",\n    \"vehicle_number\": \"ABC-1234\",\n    \"vehicle_type\": \"truck\",\n    \"goods_type\": \"produce\",\n    \"unloading_time\": \"{{$isoTimestamp}}\",\n    \"suggested_unloading_time\": \"{{$isoTimestamp}}\",\n    \"total_amount\": 1500.25,\n    \"issued_at\": \"{{$isoTimestamp}}\",\n    \"items\": [{\"name\": \"Tomato\", \"qty\": 10}]\n  }\n}"
+        },
+        "url": "{{api_base_url}}/api/sync/tickets"
+      }
+    },
+    {
+      "name": "Unloading Start",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"{{idem_key_unloading_start}}\",\n  \"entityType\": \"unloading\",\n  \"operation\": \"start\",\n  \"entityId\": \"{{unloading_id}}\",\n  \"queuedAt\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"queue_number\": \"Q-001\",\n    \"vehicle_number\": \"ABC-1234\",\n    \"vehicle_type\": \"truck\",\n    \"product_category\": \"produce\",\n    \"started_at\": \"{{$isoTimestamp}}\",\n    \"estimated_minutes\": 45\n  }\n}"
+        },
+        "url": "{{api_base_url}}/api/sync/unloading/start"
+      }
+    },
+    {
+      "name": "Unloading Done",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"{{idem_key_unloading_done}}\",\n  \"entityType\": \"unloading\",\n  \"operation\": \"done\",\n  \"entityId\": \"{{unloading_id}}\",\n  \"queuedAt\": \"{{$isoTimestamp}}\",\n  \"payload\": {\n    \"version\": 1,\n    \"queue_number\": \"Q-001\",\n    \"vehicle_number\": \"ABC-1234\",\n    \"vehicle_type\": \"truck\",\n    \"product_category\": \"produce\",\n    \"started_at\": \"{{$isoTimestamp}}\",\n    \"estimated_minutes\": 45,\n    \"completed_at\": \"{{$isoTimestamp}}\"\n  }\n}"
+        },
+        "url": "{{api_base_url}}/api/sync/unloading/done"
+      }
+    },
+    {
+      "name": "Unloading Snapshot",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{api_base_url}}/api/sync/unloading/snapshot"
+      }
+    },
+    {
+      "name": "Tickets Snapshot",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{api_base_url}}/api/sync/tickets/snapshot"
+      }
+    },
+    {
+      "name": "Dashboard",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{api_base_url}}/api/sync/dashboard"
+      }
+    }
+  ],
+  "variable": [
+    { "key": "api_base_url", "value": "http://localhost:3000" },
+    { "key": "access_token", "value": "" },
+    { "key": "device_id", "value": "android-device-01" },
+    { "key": "unloading_id", "value": "de4f893b-227f-4f0b-a9dd-b0e68f77be7a" },
+    { "key": "ticket_id", "value": "9ca30b76-0c32-4c74-a3e7-895e7c35ab8b" },
+    { "key": "transaction_id", "value": "txn-mobile-0001" },
+    { "key": "idem_key_ticket", "value": "f35ea660-5487-420a-9e0e-7a1dd8f44790" },
+    { "key": "idem_key_unloading_start", "value": "f4a4b021-6f12-45db-8732-1d4f2589e983" },
+    { "key": "idem_key_unloading_done", "value": "ea21f693-1721-455f-8d9f-1636b8e9ff7d" }
+  ]
+}

@@ -1,15 +1,17 @@
 import { prisma } from "../../lib/prisma";
-import { BusinessType, Role } from "../../generated/prisma/client";
+import { AccountStatus, BusinessType, Role } from "../../generated/prisma/client";
 import bcrypt from "bcrypt";
 
 const SALT_ROUNDS = 10;
+const OTP_SALT_ROUNDS = 8;
+const OTP_EXPIRY_MINUTES = 5;
+const OTP_MAX_ATTEMPTS = 5;
 
 type CreateBusinessOwnerInput = {
   firstName: string;
   lastName: string;
   contact_number: string;
   email: string;
-  password: string;
   businessName: string;
   businessType: BusinessType;
   stallId: number | string | bigint;
@@ -17,23 +19,36 @@ type CreateBusinessOwnerInput = {
   role?: Role;
 };
 
+type ActivateBusinessOwnerInput = {
+  contact_number: string;
+  otp: string;
+  password: string;
+};
+
+const normalizePhone = (phone: string) => phone.trim();
+
+const generateOtpCode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 export const createUser = async (data: CreateBusinessOwnerInput) => {
   const createdAt = new Date();
   const stallId = BigInt(data.stallId);
-  const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
+  const contactNumber = normalizePhone(data.contact_number);
 
   return await prisma.account.create({
     data: {
-      phone: data.contact_number,
+      phone: contactNumber,
       email: data.email,
-      password: hashedPassword,
+      password: null,
       role: data.role ?? Role.Business_Owner,
       created_at: createdAt,
+      account_status: AccountStatus.Pending_activation,
       businessOwner: {
         create: {
           first_name: data.firstName,
           last_name: data.lastName,
-          contact_number: data.contact_number,
+          contact_number: contactNumber,
           email: data.email,
           created_at: createdAt,
           businesses: {
@@ -55,6 +70,136 @@ export const createUser = async (data: CreateBusinessOwnerInput) => {
       },
     },
   });
+};
+
+export const requestBusinessOwnerActivationOtp = async (contactNumber: string) => {
+  const normalizedPhone = normalizePhone(contactNumber);
+  const account = await prisma.account.findFirst({
+    where: {
+      phone: normalizedPhone,
+      role: Role.Business_Owner,
+      account_status: AccountStatus.Pending_activation,
+    },
+    select: {
+      account_id: true,
+    },
+  });
+
+  if (!account) {
+    throw new Error("Pending business owner account not found");
+  }
+
+  await prisma.account_activation_otp.updateMany({
+    where: {
+      account_id: account.account_id,
+      consumed_at: null,
+    },
+    data: {
+      consumed_at: new Date(),
+    },
+  });
+
+  const otpCode = generateOtpCode();
+  const codeHash = await bcrypt.hash(otpCode, OTP_SALT_ROUNDS);
+  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+  await prisma.account_activation_otp.create({
+    data: {
+      account_id: account.account_id,
+      code_hash: codeHash,
+      expires_at: expiresAt,
+      created_at: new Date(),
+    },
+  });
+
+  return {
+    otpCode,
+    expiresAt,
+  };
+};
+
+export const activateBusinessOwner = async (input: ActivateBusinessOwnerInput) => {
+  const normalizedPhone = normalizePhone(input.contact_number);
+  const account = await prisma.account.findFirst({
+    where: {
+      phone: normalizedPhone,
+      role: Role.Business_Owner,
+      account_status: AccountStatus.Pending_activation,
+    },
+    select: {
+      account_id: true,
+    },
+  });
+
+  if (!account) {
+    throw new Error("Pending business owner account not found");
+  }
+
+  const otpRecord = await prisma.account_activation_otp.findFirst({
+    where: {
+      account_id: account.account_id,
+      consumed_at: null,
+      expires_at: {
+        gt: new Date(),
+      },
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
+
+  if (!otpRecord) {
+    throw new Error("No valid OTP found. Request a new code.");
+  }
+
+  if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+    await prisma.account_activation_otp.update({
+      where: { otp_id: otpRecord.otp_id },
+      data: {
+        consumed_at: new Date(),
+      },
+    });
+    throw new Error("OTP attempts exceeded. Request a new code.");
+  }
+
+  const isOtpValid = await bcrypt.compare(input.otp, otpRecord.code_hash);
+
+  if (!isOtpValid) {
+    await prisma.account_activation_otp.update({
+      where: { otp_id: otpRecord.otp_id },
+      data: {
+        attempts: otpRecord.attempts + 1,
+      },
+    });
+    throw new Error("Invalid OTP");
+  }
+
+  const hashedPassword = await bcrypt.hash(input.password, SALT_ROUNDS);
+
+  await prisma.$transaction([
+    prisma.account.update({
+      where: {
+        account_id: account.account_id,
+      },
+      data: {
+        password: hashedPassword,
+        account_status: AccountStatus.Active,
+      },
+    }),
+    prisma.account_activation_otp.updateMany({
+      where: {
+        account_id: account.account_id,
+        consumed_at: null,
+      },
+      data: {
+        consumed_at: new Date(),
+      },
+    }),
+  ]);
+
+  return {
+    message: "Business owner account activated successfully",
+  };
 };
 
 // password excluded — handle via a dedicated change-password endpoint

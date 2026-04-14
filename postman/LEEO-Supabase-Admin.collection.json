@@ -1,0 +1,142 @@
+{
+  "info": {
+    "name": "LEEO Supabase Admin Flow",
+    "_postman_id": "5f9b2c9a-8d57-4af4-a2ce-95e3e1af2f10",
+    "description": "OTP sign-in via Supabase, then call protected admin endpoints in backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1) Request Phone OTP (Supabase)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "apikey", "value": "{{supabase_anon_key}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{admin_phone}}\",\n  \"create_user\": false\n}"
+        },
+        "url": {
+          "raw": "{{supabase_url}}/auth/v1/otp",
+          "host": ["{{supabase_url}}"],
+          "path": ["auth", "v1", "otp"]
+        }
+      }
+    },
+    {
+      "name": "2) Verify Phone OTP (Supabase)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is success', function () {",
+              "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              "",
+              "let json = {};",
+              "try { json = pm.response.json(); } catch (e) {}",
+              "",
+              "const token = json?.access_token || json?.session?.access_token;",
+              "if (token) {",
+              "  pm.environment.set('access_token', token);",
+              "}",
+              "",
+              "const userId = json?.user?.id || json?.session?.user?.id;",
+              "if (userId) {",
+              "  pm.environment.set('supabase_user_id', userId);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "apikey", "value": "{{supabase_anon_key}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{admin_phone}}\",\n  \"token\": \"{{otp_code}}\",\n  \"type\": \"sms\"\n}"
+        },
+        "url": {
+          "raw": "{{supabase_url}}/auth/v1/verify",
+          "host": ["{{supabase_url}}"],
+          "path": ["auth", "v1", "verify"]
+        }
+      }
+    },
+    {
+      "name": "3) Get Business Owners (Protected)",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{access_token}}", "type": "string" }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{api_base_url}}/api/business-owners",
+          "host": ["{{api_base_url}}"],
+          "path": ["api", "business-owners"]
+        }
+      }
+    },
+    {
+      "name": "4) Get Hub Staff (Protected)",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{access_token}}", "type": "string" }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{api_base_url}}/api/hub-staff",
+          "host": ["{{api_base_url}}"],
+          "path": ["api", "hub-staff"]
+        }
+      }
+    },
+    {
+      "name": "5) Get Vendors by Business (Protected)",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{access_token}}", "type": "string" }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{api_base_url}}/api/vendor?businessId={{business_id}}",
+          "host": ["{{api_base_url}}"],
+          "path": ["api", "vendor"],
+          "query": [
+            { "key": "businessId", "value": "{{business_id}}" }
+          ]
+        }
+      }
+    }
+  ],
+  "event": [],
+  "variable": [
+    { "key": "api_base_url", "value": "http://localhost:3000" },
+    { "key": "supabase_url", "value": "https://cpiwhuxzqrynachassml.supabase.co" },
+    { "key": "supabase_anon_key", "value": "" },
+    { "key": "admin_phone", "value": "+639000000000" },
+    { "key": "otp_code", "value": "" },
+    { "key": "access_token", "value": "" },
+    { "key": "supabase_user_id", "value": "" },
+    { "key": "business_id", "value": "1" }
+  ]
+}

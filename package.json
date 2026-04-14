@@ -2,7 +2,9 @@
 	"name": "bcknd",
 	"type": "module",
 	"scripts": {
+		"postinstall": "prisma generate",
 		"dev": "tsx watch src/index.ts",
+		"check:db": "tsx src/scripts/check-db.ts",
 		"build": "tsc",
 		"start": "node dist/index.js"
 	},
@@ -10,9 +12,12 @@
 		"@hono/node-server": "^1.19.11",
 		"@prisma/adapter-pg": "^7.5.0",
 		"@prisma/client": "^7.5.0",
+		"@supabase/supabase-js": "^2.99.3",
+		"@types/jsonwebtoken": "^9.0.10",
 		"bcrypt": "^6.0.0",
 		"dotenv": "^17.3.1",
 		"hono": "^4.12.8",
+		"jsonwebtoken": "^9.0.3",
 		"pg": "^8.20.0",
 		"postgres": "^3.4.8"
 	},
