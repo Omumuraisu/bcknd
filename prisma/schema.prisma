@@ -25,6 +25,7 @@ model Account {
   hubStaff              hub_staff?
   leeoAdmin             leeo_admin?
   vendor                vendor?
+  archived_business_owners business_owner_archive[]
   issuedQueueTickets    queueing_ticket[]                @relation("QueueTicketsIssuedByAccount")
   issuedDeliveryTickets delivery_ticket_fee[]            @relation("DeliveryTicketsIssuedByAccount")
 
@@ -40,7 +41,9 @@ model businessOwner {
   contact_number    String
   email             String
   created_at        DateTime   @db.Timestamp(0)
+  archived_at       DateTime?  @db.Timestamp(0)
   businesses        business[]
+  archive_records   business_owner_archive[]
   account           Account    @relation(fields: [account_id], references: [account_id])
 
   @@schema("public")
@@ -71,6 +74,7 @@ model business {
   products          product[]
   active_in_stalls  stall[]       @relation("stall_active_business")
   vendors           vendor[]
+  pending_vendor_applications vendor_application[]
 
   @@index([business_owner_id])
   @@index([stall_id])
@@ -105,6 +109,47 @@ model vendor {
   business       business @relation(fields: [business_id], references: [business_id])
 
   @@index([business_id])
+  @@schema("public")
+}
+
+model vendor_application {
+  application_id      BigInt                  @id @default(autoincrement())
+  business_id         BigInt
+  first_name          String
+  middle_initial      String                  @default("NA")
+  last_name           String
+  contact_number      String
+  email               String?
+  attachment_name     String                  @default("Attached file")
+  attachment_url      String?
+  status              VendorApplicationStatus @default(Pending_review)
+  required_documents  Json                    @default("[]")
+  compliance_note     String?
+  reviewed_at         DateTime?               @db.Timestamp(0)
+  created_at          DateTime                @default(now()) @db.Timestamp(0)
+  business            business                @relation(fields: [business_id], references: [business_id])
+
+  @@index([business_id])
+  @@index([status])
+  @@schema("public")
+}
+
+model business_owner_archive {
+  archive_id         BigInt      @id @default(autoincrement())
+  account_id         BigInt
+  business_owner_id  BigInt?
+  reason             String
+  note               String?
+  snapshot           Json
+  archived_at        DateTime    @default(now()) @db.Timestamp(0)
+  restored_at        DateTime?   @db.Timestamp(0)
+  account            Account     @relation(fields: [account_id], references: [account_id])
+  owner              businessOwner? @relation(fields: [business_owner_id], references: [business_owner_id])
+
+  @@index([account_id])
+  @@index([business_owner_id])
+  @@index([archived_at])
+  @@index([restored_at])
   @@schema("public")
 }
 
@@ -845,6 +890,15 @@ enum Role {
   Business_Owner
   Vendor
   Delivery_Operator
+
+  @@schema("public")
+}
+
+enum VendorApplicationStatus {
+  Pending_review
+  Compliance_requested
+  Approved
+  Rejected
 
   @@schema("public")
 }

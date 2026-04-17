@@ -38,6 +38,12 @@ export const Role = {
     Vendor: 'Vendor',
     Delivery_Operator: 'Delivery_Operator'
 };
+export const VendorApplicationStatus = {
+    Pending_review: 'Pending_review',
+    Compliance_requested: 'Compliance_requested',
+    Approved: 'Approved',
+    Rejected: 'Rejected'
+};
 export const aal_level = {
     aal1: 'aal1',
     aal2: 'aal2',

@@ -83,6 +83,117 @@ const findAccountForProfile = async (profile) => {
         },
     });
 };
+const findAccountByIdentifier = async (identifier) => {
+    const normalized = normalizeIdentifier(identifier);
+    return prisma.account.findFirst({
+        where: {
+            OR: [
+                { email: { equals: normalized, mode: 'insensitive' } },
+                { phone: normalized },
+            ],
+        },
+        select: {
+            account_id: true,
+            email: true,
+            phone: true,
+            role: true,
+            account_status: true,
+            supabase_user_id: true,
+        },
+    });
+};
+const findProfileById = async (id) => {
+    const rows = (await prisma.$queryRawUnsafe(`
+      select
+        ap.id,
+        ap.email,
+        ap.phone,
+        coalesce(
+          nullif(to_jsonb(ap)->>'username', ''),
+          ap.raw_user_meta_data->>'username'
+        ) as username,
+        coalesce(
+          (to_jsonb(ap)->>'is_active')::boolean,
+          (ap.raw_user_meta_data->>'is_active')::boolean,
+          true
+        ) as is_active,
+        coalesce(
+          nullif(to_jsonb(ap)->>'role', ''),
+          ap.raw_user_meta_data->>'role'
+        ) as role
+      from public.auth_profiles ap
+      where ap.id = $1
+      limit 1
+    `, id));
+    const row = rows[0];
+    if (!row)
+        return null;
+    return {
+        id: row.id,
+        email: row.email,
+        phone: row.phone,
+        username: row.username,
+        is_active: asBoolean(row.is_active, true),
+        role: row.role,
+    };
+};
+const resolveAdminAuthProfileAndAccount = async (identifier) => {
+    const profile = await findProfileByIdentifier(identifier);
+    if (profile) {
+        const account = await findAccountForProfile(profile);
+        if (!account) {
+            throw new Error('Account not found');
+        }
+        return { profile, account };
+    }
+    const account = await findAccountByIdentifier(identifier);
+    if (!account) {
+        throw new Error('Account not found');
+    }
+    if (account.role !== Role.Admin) {
+        throw new Error('Admin account required');
+    }
+    if (!account.email) {
+        throw new Error('Account not found');
+    }
+    let profileId = account.supabase_user_id;
+    if (!profileId) {
+        if (!supabaseAdminClient) {
+            throw new Error('Supabase admin client is not configured');
+        }
+        const { data, error } = await supabaseAdminClient.auth.admin.createUser({
+            email: account.email,
+            email_confirm: false,
+            user_metadata: {
+                role: Role.Admin,
+                is_active: false,
+                username: account.email,
+            },
+        });
+        if (error || !data.user?.id) {
+            throw new Error(error?.message || 'Failed to provision admin auth identity');
+        }
+        profileId = data.user.id;
+        await prisma.account.update({
+            where: { account_id: account.account_id },
+            data: {
+                supabase_user_id: profileId,
+            },
+        });
+    }
+    const hydratedProfile = (await findProfileById(profileId)) ?? (await findProfileByIdentifier(account.email));
+    if (!hydratedProfile || !hydratedProfile.email) {
+        throw new Error('Account not found');
+    }
+    const resolvedAccount = await findAccountForProfile(hydratedProfile);
+    if (!resolvedAccount) {
+        throw new Error('Account not found');
+    }
+    return {
+        profile: hydratedProfile,
+        account: resolvedAccount,
+    };
+};
 const markProfileAsActive = async (profileId) => {
     await prisma.$executeRawUnsafe(`
       update public.auth_profiles
@@ -187,14 +298,7 @@ export const loginWithPassword = async (identifier, password) => {
     };
 };
 export const requestAdminPasswordSetupCode = async (identifier) => {
-    const profile = await findProfileByIdentifier(identifier);
-    if (!profile || !profile.email) {
-        throw new Error('Account not found');
-    }
-    const account = await findAccountForProfile(profile);
-    if (!account) {
-        throw new Error('Account not found');
-    }
+    const { profile, account } = await resolveAdminAuthProfileAndAccount(identifier);
     if (!isAdminRole(account.role)) {
         throw new Error('Admin account required');
     }
@@ -213,14 +317,7 @@ export const requestAdminPasswordSetupCode = async (identifier) => {
     };
 };
 export const createAdminPassword = async (identifier, verificationCode, newPassword) => {
-    const profile = await findProfileByIdentifier(identifier);
-    if (!profile || !profile.email) {
-        throw new Error('Account not found');
-    }
-    const account = await findAccountForProfile(profile);
-    if (!account) {
-        throw new Error('Account not found');
-    }
+    const { profile, account } = await resolveAdminAuthProfileAndAccount(identifier);
     if (!isAdminRole(account.role)) {
         throw new Error('Admin account required');
     }

@@ -1,5 +1,10 @@
 import { prisma } from "../../lib/prisma";
-import { AccountStatus, BusinessType, Role } from "../../generated/prisma/client";
+import {
+  AccountStatus,
+  BusinessType,
+  Role,
+  VendorApplicationStatus,
+} from "../../generated/prisma/client";
 import bcrypt from "bcrypt";
 
 const SALT_ROUNDS = 10;
@@ -39,6 +44,17 @@ type ActivateBusinessOwnerInput = {
   otp: string;
   password: string;
 };
+
+export const BUSINESS_OWNER_DEACTIVATION_REASONS = [
+  'rent_past_due',
+  'lease_not_renewed',
+  'too_many_violations',
+  'fraud_invalid_documents',
+  'other',
+] as const;
+
+export type BusinessOwnerDeactivationReason =
+  (typeof BUSINESS_OWNER_DEACTIVATION_REASONS)[number];
 
 const normalizePhone = (phone: string) => phone.trim();
 
@@ -261,11 +277,43 @@ type UpdateBusinessOwnerInput = {
 
 export const getUsers = async () => {
   return await prisma.account.findMany({
-    where: { role: Role.Business_Owner },
+    where: {
+      role: Role.Business_Owner,
+      businessOwner: {
+        is: {
+          archived_at: null,
+        },
+      },
+    },
     include: {
       businessOwner: {
         include: {
-          businesses: true,
+          businesses: {
+            include: {
+              vendors: {
+                include: {
+                  account: {
+                    select: {
+                      account_status: true,
+                    },
+                  },
+                },
+              },
+              pending_vendor_applications: {
+                where: {
+                  status: {
+                    in: [
+                      VendorApplicationStatus.Pending_review,
+                      VendorApplicationStatus.Compliance_requested,
+                    ],
+                  },
+                },
+                orderBy: {
+                  created_at: "desc",
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -278,7 +326,32 @@ export const getUserById = async (id: number | string | bigint) => {
     include: {
       businessOwner: {
         include: {
-          businesses: true,
+          businesses: {
+            include: {
+              vendors: {
+                include: {
+                  account: {
+                    select: {
+                      account_status: true,
+                    },
+                  },
+                },
+              },
+              pending_vendor_applications: {
+                where: {
+                  status: {
+                    in: [
+                      VendorApplicationStatus.Pending_review,
+                      VendorApplicationStatus.Compliance_requested,
+                    ],
+                  },
+                },
+                orderBy: {
+                  created_at: "desc",
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -335,7 +408,32 @@ export const updateUser = async (
     include: {
       businessOwner: {
         include: {
-          businesses: true,
+          businesses: {
+            include: {
+              vendors: {
+                include: {
+                  account: {
+                    select: {
+                      account_status: true,
+                    },
+                  },
+                },
+              },
+              pending_vendor_applications: {
+                where: {
+                  status: {
+                    in: [
+                      VendorApplicationStatus.Pending_review,
+                      VendorApplicationStatus.Compliance_requested,
+                    ],
+                  },
+                },
+                orderBy: {
+                  created_at: "desc",
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -378,4 +476,187 @@ export const deleteUser = async (id: number | string | bigint) => {
       where: { account_id: accountId },
     });
   });
+};
+
+const toJsonSafe = <T>(value: T): T =>
+  JSON.parse(
+    JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v))
+  ) as T;
+
+export const listArchivedUsers = async () => {
+  return prisma.business_owner_archive.findMany({
+    where: {
+      restored_at: null,
+    },
+    orderBy: {
+      archived_at: 'desc',
+    },
+  });
+};
+
+export const deactivateUser = async (
+  id: number | string | bigint,
+  reason: BusinessOwnerDeactivationReason,
+  note?: string
+) => {
+  const accountId = BigInt(id);
+
+  const account = await prisma.account.findUnique({
+    where: { account_id: accountId },
+    include: {
+      businessOwner: {
+        include: {
+          businesses: {
+            include: {
+              vendors: {
+                include: {
+                  account: {
+                    select: {
+                      account_id: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!account || account.role !== Role.Business_Owner || !account.businessOwner) {
+    const error = new Error('Business owner account not found');
+    (error as Error & { code?: string }).code = 'P2025';
+    throw error;
+  }
+
+  const vendorAccountIds = account.businessOwner.businesses
+    .flatMap(business => business.vendors)
+    .map(vendor => vendor.account.account_id);
+
+  const archived = await prisma.$transaction(async tx => {
+    const archive = await tx.business_owner_archive.create({
+      data: {
+        account_id: account.account_id,
+        business_owner_id: account.businessOwner!.business_owner_id,
+        reason,
+        note: note?.trim() || null,
+        snapshot: toJsonSafe(account),
+      },
+    });
+
+    await tx.account.update({
+      where: { account_id: account.account_id },
+      data: {
+        account_status: AccountStatus.Disabled,
+      },
+    });
+
+    await tx.businessOwner.update({
+      where: { account_id: account.account_id },
+      data: {
+        archived_at: new Date(),
+      },
+    });
+
+    if (vendorAccountIds.length > 0) {
+      await tx.account.updateMany({
+        where: { account_id: { in: vendorAccountIds } },
+        data: {
+          account_status: AccountStatus.Disabled,
+        },
+      });
+    }
+
+    return archive;
+  });
+
+  return archived;
+};
+
+export const reactivateArchivedUser = async (archiveId: number | string | bigint) => {
+  const archiveKey = BigInt(archiveId);
+
+  const archive = await prisma.business_owner_archive.findUnique({
+    where: { archive_id: archiveKey },
+  });
+
+  if (!archive) {
+    const error = new Error('Archive record not found');
+    (error as Error & { code?: string }).code = 'P2025';
+    throw error;
+  }
+
+  if (archive.restored_at) {
+    return {
+      archive,
+      alreadyRestored: true,
+    };
+  }
+
+  const owner = await prisma.businessOwner.findUnique({
+    where: { account_id: archive.account_id },
+    include: {
+      businesses: {
+        include: {
+          vendors: {
+            include: {
+              account: {
+                select: {
+                  account_id: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!owner) {
+    const error = new Error('Archived owner record no longer exists for reactivation');
+    (error as Error & { code?: string }).code = 'P2025';
+    throw error;
+  }
+
+  const vendorAccountIds = owner.businesses
+    .flatMap(business => business.vendors)
+    .map(vendor => vendor.account.account_id);
+
+  const reactivatedArchive = await prisma.$transaction(async tx => {
+    await tx.account.update({
+      where: { account_id: archive.account_id },
+      data: {
+        account_status: AccountStatus.Pending_activation,
+      },
+    });
+
+    await tx.businessOwner.update({
+      where: { account_id: archive.account_id },
+      data: {
+        archived_at: null,
+      },
+    });
+
+    if (vendorAccountIds.length > 0) {
+      await tx.account.updateMany({
+        where: { account_id: { in: vendorAccountIds } },
+        data: {
+          account_status: AccountStatus.Pending_activation,
+        },
+      });
+    }
+
+    return tx.business_owner_archive.update({
+      where: { archive_id: archive.archive_id },
+      data: {
+        restored_at: new Date(),
+      },
+    });
+  });
+
+  return {
+    archive: reactivatedArchive,
+    alreadyRestored: false,
+  };
 };

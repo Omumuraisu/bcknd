@@ -1,5 +1,6 @@
 import { AccountStatus, AdminRole, Role } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { supabaseAdminClient } from '../lib/supabase-auth.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -127,6 +128,47 @@ const placeholderPhone = (email: string) => {
     .padStart(6, '0');
   const compactEmail = email.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 18);
   return `admin-${compactEmail}-${stamp}-${nonce}`;
+};
+
+const findAuthProfileIdByEmail = async (email: string): Promise<string | null> => {
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+      select id
+      from public.auth_profiles
+      where lower(coalesce(email, '')) = lower($1)
+      limit 1
+    `,
+    email
+  )) as Array<{ id: string }>;
+
+  return rows[0]?.id ?? null;
+};
+
+const resolveSupabaseUserIdForAdminEmail = async (email: string): Promise<string> => {
+  const existingId = await findAuthProfileIdByEmail(email);
+  if (existingId) {
+    return existingId;
+  }
+
+  if (!supabaseAdminClient) {
+    throw new Error('Supabase admin client is not configured');
+  }
+
+  const { data, error } = await supabaseAdminClient.auth.admin.createUser({
+    email,
+    email_confirm: false,
+    user_metadata: {
+      role: Role.Admin,
+      is_active: false,
+      username: email,
+    },
+  });
+
+  if (error || !data.user?.id) {
+    throw new Error(error?.message || 'Failed to provision auth user for admin personnel');
+  }
+
+  return data.user.id;
 };
 
 const selectAdminWithAccount = {
@@ -348,23 +390,25 @@ export const listPersonnel = async () => {
 export const createPersonnel = async (input: PersonnelInput) => {
   const normalized = normalizePersonnelInput(input);
   const createdAt = new Date();
+  const supabaseUserId = await resolveSupabaseUserIdForAdminEmail(normalized.email);
 
   const account = await prisma.account.create({
     data: {
       phone: placeholderPhone(normalized.email),
       email: normalized.email,
+      supabase_user_id: supabaseUserId,
       password: null,
       role: Role.Admin,
       created_at: createdAt,
-      account_status: AccountStatus.Active,
-      email_verified_at: createdAt,
+      account_status: AccountStatus.Pending_activation,
+      email_verified_at: null,
       leeoAdmin: {
         create: {
           first_name: normalized.firstName,
           last_name: normalized.lastName,
           admin_role: normalized.adminRole,
           contact_number: placeholderPhone(normalized.email),
-          account_status: AccountStatus.Active,
+          account_status: AccountStatus.Pending_activation,
           created_at: createdAt,
         },
       },
