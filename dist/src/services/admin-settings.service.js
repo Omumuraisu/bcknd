@@ -82,14 +82,14 @@ const selectAdminWithAccount = {
         },
     },
 };
-const toIdentityDTO = (admin) => ({
+const toIdentityDTO = (admin, profileImage) => ({
     id: asSafeNumber(admin.account_id),
     first_name: admin.first_name,
     last_name: admin.last_name,
     full_name: `${admin.first_name} ${admin.last_name}`.trim(),
     email: admin.account.email,
     role: toFrontendRole(admin.admin_role),
-    avatar_url: '',
+    avatar_url: profileImage,
 });
 const toProfileDTO = (admin, profileImage) => ({
     first_name: admin.first_name,
@@ -188,7 +188,8 @@ export const getCurrentAdminIdentity = async (accountId) => {
     const admin = await getAdminByAccountId(accountId);
     if (!admin)
         throw new Error('Admin profile not found');
-    return toIdentityDTO(admin);
+    const profileImage = await getProfileImageFromAuthProfile(admin.account.supabase_user_id);
+    return toIdentityDTO(admin, profileImage);
 };
 export const getCurrentAdminProfile = async (accountId) => {
     const admin = await getAdminByAccountId(accountId);

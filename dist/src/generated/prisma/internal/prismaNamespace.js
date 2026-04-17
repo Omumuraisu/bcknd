@@ -135,6 +135,7 @@ export const BusinessOwnerScalarFieldEnum = {
     business_owner_id: 'business_owner_id',
     account_id: 'account_id',
     first_name: 'first_name',
+    middle_initial: 'middle_initial',
     last_name: 'last_name',
     contact_number: 'contact_number',
     email: 'email',
@@ -144,9 +145,23 @@ export const BusinessScalarFieldEnum = {
     business_id: 'business_id',
     business_owner_id: 'business_owner_id',
     stall_id: 'stall_id',
+    stall_no: 'stall_no',
     business_name: 'business_name',
+    section: 'section',
     business_type: 'business_type',
-    lease_date: 'lease_date'
+    lease_date: 'lease_date',
+    has_business_permit: 'has_business_permit',
+    business_permit_name: 'business_permit_name',
+    business_permit_line_of_business: 'business_permit_line_of_business',
+    business_permit_number: 'business_permit_number',
+    business_permit_year: 'business_permit_year',
+    business_permit_no_reason: 'business_permit_no_reason',
+    has_health_card_permit: 'has_health_card_permit',
+    health_card_name: 'health_card_name',
+    health_card_number: 'health_card_number',
+    health_card_issue_date: 'health_card_issue_date',
+    health_card_expiry_date: 'health_card_expiry_date',
+    health_card_no_reason: 'health_card_no_reason'
 };
 export const StallScalarFieldEnum = {
     stall_id: 'stall_id',

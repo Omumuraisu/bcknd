@@ -10,12 +10,27 @@ const OTP_MAX_ATTEMPTS = 5;
 type CreateBusinessOwnerInput = {
   firstName: string;
   lastName: string;
+  middleInitial: string;
   contact_number: string;
   email: string;
   businessName: string;
+  section: string;
   businessType: BusinessType;
   stallId: number | string | bigint;
+  stallNo: string;
   leaseDate: string;
+  hasBusinessPermit: boolean;
+  businessPermitName?: string;
+  businessPermitLineOfBusiness?: string;
+  businessPermitNumber?: string;
+  businessPermitYear?: number;
+  businessPermitNoReason?: string;
+  hasHealthCardPermit?: boolean | null;
+  healthCardName?: string;
+  healthCardNumber?: string;
+  healthCardIssueDate?: string;
+  healthCardExpiryDate?: string;
+  healthCardNoReason?: string;
   role?: Role;
 };
 
@@ -47,6 +62,7 @@ export const createUser = async (data: CreateBusinessOwnerInput) => {
       businessOwner: {
         create: {
           first_name: data.firstName,
+          middle_initial: data.middleInitial,
           last_name: data.lastName,
           contact_number: contactNumber,
           email: data.email,
@@ -54,9 +70,23 @@ export const createUser = async (data: CreateBusinessOwnerInput) => {
           businesses: {
             create: {
               stall_id: stallId,
+              stall_no: data.stallNo,
               business_name: data.businessName,
+              section: data.section,
               business_type: data.businessType,
               lease_date: data.leaseDate,
+              has_business_permit: data.hasBusinessPermit,
+              business_permit_name: data.businessPermitName,
+              business_permit_line_of_business: data.businessPermitLineOfBusiness,
+              business_permit_number: data.businessPermitNumber,
+              business_permit_year: data.businessPermitYear,
+              business_permit_no_reason: data.businessPermitNoReason,
+              has_health_card_permit: data.hasHealthCardPermit ?? null,
+              health_card_name: data.healthCardName,
+              health_card_number: data.healthCardNumber,
+              health_card_issue_date: data.healthCardIssueDate,
+              health_card_expiry_date: data.healthCardExpiryDate,
+              health_card_no_reason: data.healthCardNoReason,
             },
           },
         },
@@ -204,10 +234,29 @@ export const activateBusinessOwner = async (input: ActivateBusinessOwnerInput) =
 
 // password excluded — handle via a dedicated change-password endpoint
 type UpdateBusinessOwnerInput = {
-  firstName?: string;
-  lastName?: string;
-  contact_number?: string;
-  email?: string;
+  firstName: string;
+  lastName: string;
+  middleInitial: string;
+  contact_number: string;
+  email: string;
+  businessName: string;
+  section: string;
+  businessType: BusinessType;
+  stallId: number | string | bigint;
+  stallNo: string;
+  leaseDate: string;
+  hasBusinessPermit: boolean;
+  businessPermitName?: string;
+  businessPermitLineOfBusiness?: string;
+  businessPermitNumber?: string;
+  businessPermitYear?: number;
+  businessPermitNoReason?: string;
+  hasHealthCardPermit?: boolean | null;
+  healthCardName?: string;
+  healthCardNumber?: string;
+  healthCardIssueDate?: string;
+  healthCardExpiryDate?: string;
+  healthCardNoReason?: string;
 };
 
 export const getUsers = async () => {
@@ -240,17 +289,46 @@ export const updateUser = async (
   id: number | string | bigint,
   data: UpdateBusinessOwnerInput
 ) => {
+  const accountId = BigInt(id);
+  const stallId = BigInt(data.stallId);
+
   return await prisma.account.update({
-    where: { account_id: BigInt(id) },
+    where: { account_id: accountId },
     data: {
       phone: data.contact_number,
       email: data.email,
       businessOwner: {
         update: {
           first_name: data.firstName,
+          middle_initial: data.middleInitial,
           last_name: data.lastName,
           contact_number: data.contact_number,
           email: data.email,
+          businesses: {
+            updateMany: {
+              where: {},
+              data: {
+                stall_id: stallId,
+                stall_no: data.stallNo,
+                business_name: data.businessName,
+                section: data.section,
+                business_type: data.businessType,
+                lease_date: data.leaseDate,
+                has_business_permit: data.hasBusinessPermit,
+                business_permit_name: data.businessPermitName,
+                business_permit_line_of_business: data.businessPermitLineOfBusiness,
+                business_permit_number: data.businessPermitNumber,
+                business_permit_year: data.businessPermitYear,
+                business_permit_no_reason: data.businessPermitNoReason,
+                has_health_card_permit: data.hasHealthCardPermit ?? null,
+                health_card_name: data.healthCardName,
+                health_card_number: data.healthCardNumber,
+                health_card_issue_date: data.healthCardIssueDate,
+                health_card_expiry_date: data.healthCardExpiryDate,
+                health_card_no_reason: data.healthCardNoReason,
+              },
+            },
+          },
         },
       },
     },

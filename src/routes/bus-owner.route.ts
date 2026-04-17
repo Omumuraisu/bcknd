@@ -39,6 +39,20 @@ const toJsonSafe = <T>(value: T): T =>
 const BUSINESS_TYPES = new Set(Object.values(BusinessType));
 const ROLES = new Set(Object.values(Role));
 const isDevelopment = process.env.NODE_ENV !== 'production';
+const SECTION_OPTIONS = [
+  'Fruits & Vegetables',
+  'Soft Drinks',
+  'General Merchandise',
+  'Rice & Grains',
+  'INT. Variety',
+  'Dry Goods',
+  'Peripheral Egg Dealer',
+  'Interior Egg Dealer',
+  'Fish',
+  'Poultry',
+  'Meat',
+] as const;
+const SECTIONS = new Set<string>(SECTION_OPTIONS);
 
 const mapDatabaseError = (error: unknown, fallbackMessage: string) => {
   const code = (error as { code?: string })?.code;
@@ -85,6 +99,24 @@ const asTrimmedString = (value: unknown) => {
   return value.trim();
 };
 
+const parseOptionalBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'yes' || normalized === 'true') return true;
+    if (normalized === 'no' || normalized === 'false') return false;
+  }
+  return undefined;
+};
+
+const normalizeMiddleInitial = (value: unknown) => {
+  const raw = asTrimmedString(value);
+  if (!raw) return 'NA';
+  if (raw.toUpperCase() === 'NA') return 'NA';
+  if (raw.length !== 1) return null;
+  return raw.toUpperCase();
+};
+
 const normalizeCreateBusinessOwnerBody = (body: unknown) => {
   if (!body || typeof body !== 'object') {
     return {
@@ -110,6 +142,45 @@ const normalizeCreateBusinessOwnerBody = (body: unknown) => {
   );
   const leaseDate = asTrimmedString(pickFirst(input, ['leaseDate', 'lease_date']));
   const stallIdRaw = pickFirst(input, ['stallId', 'stall_id']);
+  const stallNo = asTrimmedString(pickFirst(input, ['stallNo', 'stall_no']));
+  const section = asTrimmedString(pickFirst(input, ['section']));
+  const middleInitial = normalizeMiddleInitial(
+    pickFirst(input, ['middleInitial', 'middle_initial'])
+  );
+  const hasBusinessPermit = parseOptionalBoolean(
+    pickFirst(input, ['hasBusinessPermit', 'has_business_permit', 'businessPermit', 'business_permit'])
+  );
+  const businessPermitName = asTrimmedString(
+    pickFirst(input, ['businessPermitName', 'business_permit_name'])
+  );
+  const businessPermitLineOfBusiness = asTrimmedString(
+    pickFirst(input, ['businessPermitLineOfBusiness', 'business_permit_line_of_business'])
+  );
+  const businessPermitNumber = asTrimmedString(
+    pickFirst(input, ['businessPermitNumber', 'business_permit_number'])
+  );
+  const businessPermitYearRaw = pickFirst(input, ['businessPermitYear', 'business_permit_year']);
+  const businessPermitNoReason = asTrimmedString(
+    pickFirst(input, ['businessPermitNoReason', 'business_permit_no_reason'])
+  );
+  const hasHealthCardPermit = parseOptionalBoolean(
+    pickFirst(input, ['hasHealthCardPermit', 'has_health_card_permit', 'healthCardPermit', 'health_card_permit'])
+  );
+  const healthCardName = asTrimmedString(
+    pickFirst(input, ['healthCardName', 'health_card_name'])
+  );
+  const healthCardNumber = asTrimmedString(
+    pickFirst(input, ['healthCardNumber', 'health_card_number'])
+  );
+  const healthCardIssueDate = asTrimmedString(
+    pickFirst(input, ['healthCardIssueDate', 'health_card_issue_date'])
+  );
+  const healthCardExpiryDate = asTrimmedString(
+    pickFirst(input, ['healthCardExpiryDate', 'health_card_expiry_date'])
+  );
+  const healthCardNoReason = asTrimmedString(
+    pickFirst(input, ['healthCardNoReason', 'health_card_no_reason'])
+  );
   const roleRaw = pickFirst(input, ['role']);
 
   const missing: string[] = [];
@@ -120,7 +191,17 @@ const normalizeCreateBusinessOwnerBody = (body: unknown) => {
   if (!businessName) missing.push('businessName');
   if (!businessTypeRaw) missing.push('businessType');
   if (stallIdRaw === undefined) missing.push('stallId');
+  if (!stallNo) missing.push('stallNo');
+  if (!section) missing.push('section');
   if (!leaseDate) missing.push('leaseDate');
+
+  if (middleInitial === null) {
+    return {
+      ok: false as const,
+      status: 400 as const,
+      error: 'Invalid middleInitial. Use one letter or NA.',
+    };
+  }
 
   if (missing.length > 0) {
     return {
@@ -137,6 +218,15 @@ const normalizeCreateBusinessOwnerBody = (body: unknown) => {
       status: 400 as const,
       error: 'Invalid businessType',
       allowed: Array.from(BUSINESS_TYPES),
+    };
+  }
+
+  if (!SECTIONS.has(section)) {
+    return {
+      ok: false as const,
+      status: 400 as const,
+      error: 'Invalid section',
+      allowed: Array.from(SECTIONS),
     };
   }
 
@@ -165,19 +255,129 @@ const normalizeCreateBusinessOwnerBody = (body: unknown) => {
     role = parsedRole as Role;
   }
 
+  const businessPermitYear =
+    businessPermitYearRaw === undefined || businessPermitYearRaw === null || businessPermitYearRaw === ''
+      ? undefined
+      : Number(String(businessPermitYearRaw));
+
+  if (businessPermitYear !== undefined && (!Number.isInteger(businessPermitYear) || businessPermitYear < 1900)) {
+    return {
+      ok: false as const,
+      status: 400 as const,
+      error: 'Invalid businessPermitYear. Expected a valid year.',
+    };
+  }
+
+  if (hasBusinessPermit === undefined) {
+    return {
+      ok: false as const,
+      status: 400 as const,
+      error: 'hasBusinessPermit is required',
+    };
+  }
+
+  if (hasBusinessPermit) {
+    const permitMissing: string[] = [];
+    if (!businessPermitName) permitMissing.push('businessPermitName');
+    if (!businessPermitLineOfBusiness) permitMissing.push('businessPermitLineOfBusiness');
+    if (!businessPermitNumber) permitMissing.push('businessPermitNumber');
+    if (businessPermitYear === undefined) permitMissing.push('businessPermitYear');
+
+    if (permitMissing.length > 0) {
+      return {
+        ok: false as const,
+        status: 400 as const,
+        error: 'Missing required business permit fields',
+        fields: permitMissing,
+      };
+    }
+  } else if (!businessPermitNoReason) {
+    return {
+      ok: false as const,
+      status: 400 as const,
+      error: 'businessPermitNoReason is required when no business permit is available',
+    };
+  }
+
+  const isFoodStall = businessTypeRaw === BusinessType.Food_Stall;
+
+  if (isFoodStall) {
+    if (hasHealthCardPermit === undefined) {
+      return {
+        ok: false as const,
+        status: 400 as const,
+        error: 'hasHealthCardPermit is required for Food Stall businesses',
+      };
+    }
+
+    if (hasHealthCardPermit) {
+      const healthMissing: string[] = [];
+      if (!healthCardName) healthMissing.push('healthCardName');
+      if (!healthCardNumber) healthMissing.push('healthCardNumber');
+      if (!healthCardIssueDate) healthMissing.push('healthCardIssueDate');
+      if (!healthCardExpiryDate) healthMissing.push('healthCardExpiryDate');
+
+      if (healthMissing.length > 0) {
+        return {
+          ok: false as const,
+          status: 400 as const,
+          error: 'Missing required health card fields',
+          fields: healthMissing,
+        };
+      }
+    } else if (!healthCardNoReason) {
+      return {
+        ok: false as const,
+        status: 400 as const,
+        error: 'healthCardNoReason is required when no health card permit is available',
+      };
+    }
+  }
+
   return {
     ok: true as const,
     data: {
       firstName,
       lastName,
+      middleInitial,
       contact_number,
       email,
       businessName,
       businessType: businessTypeRaw as BusinessType,
       stallId,
+      stallNo,
+      section,
       leaseDate,
+      hasBusinessPermit,
+      businessPermitName: hasBusinessPermit ? businessPermitName : undefined,
+      businessPermitLineOfBusiness: hasBusinessPermit ? businessPermitLineOfBusiness : undefined,
+      businessPermitNumber: hasBusinessPermit ? businessPermitNumber : undefined,
+      businessPermitYear: hasBusinessPermit ? businessPermitYear : undefined,
+      businessPermitNoReason: hasBusinessPermit ? undefined : businessPermitNoReason,
+      hasHealthCardPermit: isFoodStall ? hasHealthCardPermit : null,
+      healthCardName: isFoodStall && hasHealthCardPermit ? healthCardName : undefined,
+      healthCardNumber: isFoodStall && hasHealthCardPermit ? healthCardNumber : undefined,
+      healthCardIssueDate: isFoodStall && hasHealthCardPermit ? healthCardIssueDate : undefined,
+      healthCardExpiryDate: isFoodStall && hasHealthCardPermit ? healthCardExpiryDate : undefined,
+      healthCardNoReason:
+        isFoodStall && hasHealthCardPermit === false ? healthCardNoReason : undefined,
       role,
     },
+  };
+};
+
+const normalizeUpdateBusinessOwnerBody = (body: unknown) => {
+  const normalized = normalizeCreateBusinessOwnerBody(body);
+
+  if (!normalized.ok) {
+    return normalized;
+  }
+
+  const { role: _ignoredRole, ...data } = normalized.data;
+
+  return {
+    ok: true as const,
+    data,
   };
 };
 
@@ -370,12 +570,30 @@ userRoutes.post('/activate', async (c) => {
 userRoutes.patch('/:id', requireAdminCapability('admin:write'), async (c) => {
   try {
     const id = BigInt(c.req.param('id'));
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
 
     // Strip password if accidentally sent by the client
-    const { password: _pw, ...safeBody } = body;
+    const { password: _pw, ...safeBody } = body as Record<string, unknown>;
 
-    const updatedUser = await updateUser(id, safeBody);
+    const normalized = normalizeUpdateBusinessOwnerBody(safeBody);
+
+    if (!normalized.ok) {
+      return c.json(
+        {
+          error: normalized.error,
+          ...(normalized.fields ? { fields: normalized.fields } : {}),
+          ...(normalized.allowed ? { allowed: normalized.allowed } : {}),
+        },
+        normalized.status
+      );
+    }
+
+    const updatedUser = await updateUser(id, normalized.data);
     return c.json({ user: toJsonSafe(updatedUser) });
   } catch (error) {
     console.error('PATCH /api/business-owners/:id failed:', error);
