@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { BusinessType, Role } from '../generated/prisma/client';
-import { activateBusinessOwner, createUser, getUsers, getUserById, requestBusinessOwnerActivationOtp, updateUser, deleteUser, } from '../services/admin-services/bus-owner.service.js';
+import { activateBusinessOwner, BUSINESS_OWNER_DEACTIVATION_REASONS, createUser, deactivateUser, getUsers, getUserById, listArchivedUsers, reactivateArchivedUser, requestBusinessOwnerActivationOtp, updateUser, deleteUser, } from '../services/admin-services/bus-owner.service.js';
 import { requireAdminCapability } from '../middleware/rbac.middleware.js';
 import { isLocalOtpProvider, otpProviderDisabledMessage, shouldExposeDevOtpCode, } from '../lib/otp-provider.js';
 const userRoutes = new Hono();
@@ -31,6 +31,7 @@ const SECTION_OPTIONS = [
     'Meat',
 ];
 const SECTIONS = new Set(SECTION_OPTIONS);
+const DEACTIVATION_REASONS = new Set(BUSINESS_OWNER_DEACTIVATION_REASONS);
 const mapDatabaseError = (error, fallbackMessage) => {
     const code = error?.code;
     if (code === 'P1001' || code === 'P2010') {
@@ -375,6 +376,41 @@ userRoutes.get('/', requireAdminCapability('admin:read'), async (c) => {
         return c.json(mapped.body, mapped.status);
     }
 });
+// GET archived business owners snapshot list
+userRoutes.get('/archive', requireAdminCapability('admin:read'), async (c) => {
+    try {
+        const archives = await listArchivedUsers();
+        return c.json({ archives: toJsonSafe(archives) });
+    }
+    catch (error) {
+        console.error('GET /api/business-owners/archive failed:', error);
+        const mapped = mapDatabaseError(error, 'Failed to fetch archived business owners');
+        return c.json(mapped.body, mapped.status);
+    }
+});
+// POST reactivate archived business owner and move POS accounts back to pending activation
+userRoutes.post('/archive/:archiveId/reactivate', requireAdminCapability('admin:write'), async (c) => {
+    try {
+        const archiveId = BigInt(c.req.param('archiveId'));
+        const result = await reactivateArchivedUser(archiveId);
+        return c.json({
+            message: result.alreadyRestored
+                ? 'Business owner archive was already restored'
+                : 'Business owner reactivated in pending activation state',
+            archive: toJsonSafe(result.archive),
+            alreadyRestored: result.alreadyRestored,
+        });
+    }
+    catch (error) {
+        console.error('POST /api/business-owners/archive/:archiveId/reactivate failed:', error);
+        const code = error?.code;
+        if (code === 'P2025') {
+            return c.json({ error: 'Archived business owner record not found' }, 404);
+        }
+        const mapped = mapDatabaseError(error, 'Failed to reactivate archived business owner');
+        return c.json(mapped.body, mapped.status);
+    }
+});
 // GET business owner by id
 userRoutes.get('/:id', requireAdminCapability('admin:read'), async (c) => {
     try {
@@ -501,6 +537,48 @@ userRoutes.patch('/:id', requireAdminCapability('admin:write'), async (c) => {
     catch (error) {
         console.error('PATCH /api/business-owners/:id failed:', error);
         const mapped = mapDatabaseError(error, 'Failed to update user');
+        return c.json(mapped.body, mapped.status);
+    }
+});
+// POST deactivate business owner and move record to archive list
+userRoutes.post('/:id/deactivate', requireAdminCapability('admin:write'), async (c) => {
+    try {
+        const id = BigInt(c.req.param('id'));
+        let body;
+        try {
+            body = await c.req.json();
+        }
+        catch {
+            return c.json({ error: 'Invalid JSON body' }, 400);
+        }
+        const payload = body;
+        const reason = asTrimmedString(payload.reason).toLowerCase();
+        const note = asTrimmedString(payload.note);
+        if (!reason) {
+            return c.json({ error: 'reason is required' }, 400);
+        }
+        if (!DEACTIVATION_REASONS.has(reason)) {
+            return c.json({
+                error: 'Invalid deactivation reason',
+                allowed: Array.from(DEACTIVATION_REASONS),
+            }, 400);
+        }
+        if (reason === 'other' && !note) {
+            return c.json({ error: 'note is required when reason is other' }, 400);
+        }
+        const archive = await deactivateUser(id, reason, note || undefined);
+        return c.json({
+            message: 'Business owner deactivated and archived',
+            archive: toJsonSafe(archive),
+        });
+    }
+    catch (error) {
+        console.error('POST /api/business-owners/:id/deactivate failed:', error);
+        const code = error?.code;
+        if (code === 'P2025') {
+            return c.json({ error: 'Business owner not found' }, 404);
+        }
+        const mapped = mapDatabaseError(error, 'Failed to deactivate business owner');
         return c.json(mapped.body, mapped.status);
     }
 });

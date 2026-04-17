@@ -44,6 +44,8 @@ export const ModelName = {
     business: 'business',
     stall: 'stall',
     vendor: 'vendor',
+    vendor_application: 'vendor_application',
+    business_owner_archive: 'business_owner_archive',
     zone: 'zone',
     violation: 'violation',
     transactions: 'transactions',
@@ -110,7 +112,8 @@ export const BusinessOwnerScalarFieldEnum = {
     last_name: 'last_name',
     contact_number: 'contact_number',
     email: 'email',
-    created_at: 'created_at'
+    created_at: 'created_at',
+    archived_at: 'archived_at'
 };
 export const BusinessScalarFieldEnum = {
     business_id: 'business_id',
@@ -152,6 +155,32 @@ export const VendorScalarFieldEnum = {
     last_name: 'last_name',
     contact_number: 'contact_number',
     created_at: 'created_at'
+};
+export const Vendor_applicationScalarFieldEnum = {
+    application_id: 'application_id',
+    business_id: 'business_id',
+    first_name: 'first_name',
+    middle_initial: 'middle_initial',
+    last_name: 'last_name',
+    contact_number: 'contact_number',
+    email: 'email',
+    attachment_name: 'attachment_name',
+    attachment_url: 'attachment_url',
+    status: 'status',
+    required_documents: 'required_documents',
+    compliance_note: 'compliance_note',
+    reviewed_at: 'reviewed_at',
+    created_at: 'created_at'
+};
+export const Business_owner_archiveScalarFieldEnum = {
+    archive_id: 'archive_id',
+    account_id: 'account_id',
+    business_owner_id: 'business_owner_id',
+    reason: 'reason',
+    note: 'note',
+    snapshot: 'snapshot',
+    archived_at: 'archived_at',
+    restored_at: 'restored_at'
 };
 export const ZoneScalarFieldEnum = {
     zone_id: 'zone_id',
