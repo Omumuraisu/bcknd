@@ -24,6 +24,7 @@ export const createUser = async (data) => {
             businessOwner: {
                 create: {
                     first_name: data.firstName,
+                    middle_initial: data.middleInitial,
                     last_name: data.lastName,
                     contact_number: contactNumber,
                     email: data.email,
@@ -31,9 +32,23 @@ export const createUser = async (data) => {
                     businesses: {
                         create: {
                             stall_id: stallId,
+                            stall_no: data.stallNo,
                             business_name: data.businessName,
+                            section: data.section,
                             business_type: data.businessType,
                             lease_date: data.leaseDate,
+                            has_business_permit: data.hasBusinessPermit,
+                            business_permit_name: data.businessPermitName,
+                            business_permit_line_of_business: data.businessPermitLineOfBusiness,
+                            business_permit_number: data.businessPermitNumber,
+                            business_permit_year: data.businessPermitYear,
+                            business_permit_no_reason: data.businessPermitNoReason,
+                            has_health_card_permit: data.hasHealthCardPermit ?? null,
+                            health_card_name: data.healthCardName,
+                            health_card_number: data.healthCardNumber,
+                            health_card_issue_date: data.healthCardIssueDate,
+                            health_card_expiry_date: data.healthCardExpiryDate,
+                            health_card_no_reason: data.healthCardNoReason,
                         },
                     },
                 },
@@ -187,17 +202,45 @@ export const getUserById = async (id) => {
     });
 };
 export const updateUser = async (id, data) => {
+    const accountId = BigInt(id);
+    const stallId = BigInt(data.stallId);
     return await prisma.account.update({
-        where: { account_id: BigInt(id) },
+        where: { account_id: accountId },
         data: {
             phone: data.contact_number,
             email: data.email,
             businessOwner: {
                 update: {
                     first_name: data.firstName,
+                    middle_initial: data.middleInitial,
                     last_name: data.lastName,
                     contact_number: data.contact_number,
                     email: data.email,
+                    businesses: {
+                        updateMany: {
+                            where: {},
+                            data: {
+                                stall_id: stallId,
+                                stall_no: data.stallNo,
+                                business_name: data.businessName,
+                                section: data.section,
+                                business_type: data.businessType,
+                                lease_date: data.leaseDate,
+                                has_business_permit: data.hasBusinessPermit,
+                                business_permit_name: data.businessPermitName,
+                                business_permit_line_of_business: data.businessPermitLineOfBusiness,
+                                business_permit_number: data.businessPermitNumber,
+                                business_permit_year: data.businessPermitYear,
+                                business_permit_no_reason: data.businessPermitNoReason,
+                                has_health_card_permit: data.hasHealthCardPermit ?? null,
+                                health_card_name: data.healthCardName,
+                                health_card_number: data.healthCardNumber,
+                                health_card_issue_date: data.healthCardIssueDate,
+                                health_card_expiry_date: data.healthCardExpiryDate,
+                                health_card_no_reason: data.healthCardNoReason,
+                            },
+                        },
+                    },
                 },
             },
         },

@@ -19,6 +19,7 @@ export const AdminRole = {
     Head_Admin: 'Head_Admin',
     Administration_Staff: 'Administration_Staff',
     Market_in_Charge: 'Market_in_Charge',
+    Accountable_Officer: 'Accountable_Officer',
     Super_Admin: 'Super_Admin'
 };
 export const AccountStatus = {
@@ -79,4 +80,15 @@ export const one_time_token_type = {
     email_change_token_new: 'email_change_token_new',
     email_change_token_current: 'email_change_token_current',
     phone_change_token: 'phone_change_token'
+};
+export const QueueTicketStatus = {
+    waiting: 'waiting',
+    unloading: 'unloading',
+    completed: 'completed',
+    cancelled: 'cancelled'
+};
+export const TicketSyncStatus = {
+    pending: 'pending',
+    synced: 'synced',
+    failed: 'failed'
 };

@@ -2,28 +2,62 @@ import { AccountStatus, AdminRole, Role } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma.js';
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const toFrontendRole = (value) => {
+    if (value === AdminRole.Super_Admin)
+        return 'super_admin';
     if (value === AdminRole.Head_Admin)
         return 'head_admin';
+    if (value === AdminRole.Accountable_Officer)
+        return 'accountable_officer';
     if (value === AdminRole.Market_in_Charge)
         return 'market_in_charge';
     return 'admin';
 };
-const toAdminRole = (value) => {
+export const normalizeIncomingAdminRole = (value) => {
     const normalized = value.trim().toLowerCase();
-    if (normalized === 'head_admin')
+    if (normalized === 'super_admin' || normalized === 'super admin' || normalized === 'sa') {
+        return AdminRole.Super_Admin;
+    }
+    if (normalized === 'head_admin' ||
+        normalized === 'head admin' ||
+        normalized === 'head dept' ||
+        normalized === 'hd') {
         return AdminRole.Head_Admin;
-    if (normalized === 'admin')
+    }
+    if (normalized === 'admin' ||
+        normalized === 'admin staff' ||
+        normalized === 'administration_staff' ||
+        normalized === 'administration staff' ||
+        normalized === 'as') {
         return AdminRole.Administration_Staff;
-    if (normalized === 'market_in_charge')
+    }
+    if (normalized === 'market_in_charge' ||
+        normalized === 'market in charge' ||
+        normalized === 'market-in-charge' ||
+        normalized === 'mic' ||
+        normalized === 'accountable officer' ||
+        normalized === 'ao') {
         return AdminRole.Market_in_Charge;
-    throw new Error('Invalid role. Allowed values: head_admin, admin, market_in_charge');
+    }
+    if (normalized === 'accountable_officer' ||
+        normalized === 'accountable officer' ||
+        normalized === 'ao') {
+        return AdminRole.Accountable_Officer;
+    }
+    throw new Error('Invalid role. Allowed values: super_admin, head_admin, admin, market_in_charge, accountable_officer');
 };
+const toAdminRole = (value) => normalizeIncomingAdminRole(value);
 const assertValidEmail = (email) => {
     if (!emailPattern.test(email.trim())) {
         throw new Error('Invalid email format');
     }
 };
 const asSafeNumber = (value) => Number(value);
+const normalizeProfileImageUrl = (value) => {
+    if (typeof value !== 'string')
+        return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+};
 const placeholderPhone = (email) => {
     const stamp = Date.now();
     const nonce = Math.floor(Math.random() * 1000000)
@@ -44,27 +78,73 @@ const selectAdminWithAccount = {
             email: true,
             role: true,
             account_status: true,
+            supabase_user_id: true,
         },
     },
 };
-const toIdentityDTO = (admin) => ({
+const toIdentityDTO = (admin, profileImage) => ({
     id: asSafeNumber(admin.account_id),
     first_name: admin.first_name,
     last_name: admin.last_name,
     full_name: `${admin.first_name} ${admin.last_name}`.trim(),
     email: admin.account.email,
     role: toFrontendRole(admin.admin_role),
-    avatar_url: '',
+    avatar_url: profileImage,
 });
-const toProfileDTO = (admin) => ({
+const toProfileDTO = (admin, profileImage) => ({
     first_name: admin.first_name,
     last_name: admin.last_name,
     full_name: `${admin.first_name} ${admin.last_name}`.trim(),
     email: admin.account.email,
     role: toFrontendRole(admin.admin_role),
-    profile_image: '',
-    avatar_url: '',
+    profile_image: profileImage,
+    avatar_url: profileImage,
 });
+const getProfileImageFromAuthProfile = async (supabaseUserId) => {
+    if (!supabaseUserId)
+        return '';
+    const rows = (await prisma.$queryRawUnsafe(`
+      select coalesce(
+        nullif(raw_user_meta_data->>'profileImageUrl', ''),
+        nullif(raw_user_meta_data->>'profile_image', ''),
+        nullif(raw_user_meta_data->>'avatar_url', ''),
+        ''
+      ) as profile_image
+      from public.auth_profiles
+      where id = $1
+      limit 1
+    `, supabaseUserId));
+    return rows[0]?.profile_image ?? '';
+};
+const saveProfileImageToAuthProfile = async (supabaseUserId, profileImageUrl) => {
+    await prisma.$executeRawUnsafe(`
+      update public.auth_profiles
+      set raw_user_meta_data =
+        case
+          when nullif($2, '') is null then
+            (coalesce(raw_user_meta_data, '{}'::jsonb) - 'profileImageUrl' - 'profile_image' - 'avatar_url')
+          else
+            jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  coalesce(raw_user_meta_data, '{}'::jsonb),
+                  '{profileImageUrl}',
+                  to_jsonb($2::text),
+                  true
+                ),
+                '{profile_image}',
+                to_jsonb($2::text),
+                true
+              ),
+              '{avatar_url}',
+              to_jsonb($2::text),
+              true
+            )
+        end,
+        updated_at = timezone('utc', now())
+      where id = $1
+    `, supabaseUserId, profileImageUrl);
+};
 const toPersonnelDTO = (admin) => ({
     id: asSafeNumber(admin.account_id),
     first_name: admin.first_name,
@@ -108,16 +188,19 @@ export const getCurrentAdminIdentity = async (accountId) => {
     const admin = await getAdminByAccountId(accountId);
     if (!admin)
         throw new Error('Admin profile not found');
-    return toIdentityDTO(admin);
+    const profileImage = await getProfileImageFromAuthProfile(admin.account.supabase_user_id);
+    return toIdentityDTO(admin, profileImage);
 };
 export const getCurrentAdminProfile = async (accountId) => {
     const admin = await getAdminByAccountId(accountId);
     if (!admin)
         throw new Error('Admin profile not found');
-    return toProfileDTO(admin);
+    const profileImage = await getProfileImageFromAuthProfile(admin.account.supabase_user_id);
+    return toProfileDTO(admin, profileImage);
 };
 export const updateCurrentAdminProfile = async (accountId, input) => {
     const normalized = normalizePersonnelInput(input);
+    const normalizedProfileImage = normalizeProfileImageUrl(input.profileImageUrl);
     const updated = await prisma.$transaction(async (tx) => {
         await tx.account.update({
             where: { account_id: accountId },
@@ -135,7 +218,11 @@ export const updateCurrentAdminProfile = async (accountId, input) => {
             select: selectAdminWithAccount,
         });
     });
-    return toProfileDTO(updated);
+    if (updated.account.supabase_user_id) {
+        await saveProfileImageToAuthProfile(updated.account.supabase_user_id, normalizedProfileImage);
+    }
+    const profileImage = await getProfileImageFromAuthProfile(updated.account.supabase_user_id);
+    return toProfileDTO(updated, profileImage);
 };
 export const listPersonnel = async () => {
     const admins = await prisma.leeo_admin.findMany({
@@ -218,6 +305,12 @@ export const updatePersonnel = async (accountId, input) => {
 };
 export const deletePersonnel = async (accountId) => {
     await prisma.$transaction(async (tx) => {
+        await tx.account_activation_otp.deleteMany({
+            where: { account_id: accountId },
+        });
+        await tx.account_email_verification_otp.deleteMany({
+            where: { account_id: accountId },
+        });
         await tx.leeo_admin.delete({
             where: { account_id: accountId },
         });

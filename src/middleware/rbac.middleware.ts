@@ -7,14 +7,15 @@ export type AdminCapability =
 
 import type { MiddlewareHandler } from 'hono';
 import { prisma } from '../lib/prisma.js';
-import { AccountStatus, Role } from '../generated/prisma/client';
+import { AccountStatus, AdminRole, Role } from '../generated/prisma/client';
 import { requireAuth } from './auth.middleware.js';
 
 export type AdminRoleKey =
   | 'Super_Admin'
   | 'Head_Admin'
   | 'Administration_Staff'
-  | 'Market_in_Charge';
+  | 'Market_in_Charge'
+  | 'Accountable_Officer';
 
 const adminCapabilities: Record<AdminRoleKey, AdminCapability[]> = {
   Super_Admin: [
@@ -27,6 +28,7 @@ const adminCapabilities: Record<AdminRoleKey, AdminCapability[]> = {
   Head_Admin: ['admin:read', 'admin:write', 'admin:delete', 'admin:ops'],
   Administration_Staff: ['admin:read', 'admin:write'],
   Market_in_Charge: ['admin:read', 'admin:ops'],
+  Accountable_Officer: ['admin:read', 'admin:ops'],
 };
 
 export const hasAdminCapability = (
@@ -36,6 +38,32 @@ export const hasAdminCapability = (
   if (!adminRole || !(adminRole in adminCapabilities)) return false;
   const roleKey = adminRole as AdminRoleKey;
   return adminCapabilities[roleKey].includes(capability);
+};
+
+const creatableRolesByCreator: Record<AdminRoleKey, AdminRole[]> = {
+  Super_Admin: [
+    AdminRole.Head_Admin,
+    AdminRole.Administration_Staff,
+    AdminRole.Market_in_Charge,
+    AdminRole.Accountable_Officer,
+  ],
+  Head_Admin: [
+    AdminRole.Administration_Staff,
+    AdminRole.Market_in_Charge,
+    AdminRole.Accountable_Officer,
+  ],
+  Administration_Staff: [AdminRole.Market_in_Charge, AdminRole.Accountable_Officer],
+  Market_in_Charge: [],
+  Accountable_Officer: [],
+};
+
+export const canCreateAdminRole = (
+  creatorRole: string | null | undefined,
+  targetRole: AdminRole
+) => {
+  if (!creatorRole || !(creatorRole in creatableRolesByCreator)) return false;
+  const roleKey = creatorRole as AdminRoleKey;
+  return creatableRolesByCreator[roleKey].includes(targetRole);
 };
 
 export const requireAdminCapability = (

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { AccountStatus, Role } from '../generated/prisma/client';
+import { AccountStatus, AdminRole, Role } from '../generated/prisma/client';
 import { requireAuth } from './auth.middleware.js';
 const adminCapabilities = {
     Super_Admin: [
@@ -12,12 +12,35 @@ const adminCapabilities = {
     Head_Admin: ['admin:read', 'admin:write', 'admin:delete', 'admin:ops'],
     Administration_Staff: ['admin:read', 'admin:write'],
     Market_in_Charge: ['admin:read', 'admin:ops'],
+    Accountable_Officer: ['admin:read', 'admin:ops'],
 };
 export const hasAdminCapability = (adminRole, capability) => {
     if (!adminRole || !(adminRole in adminCapabilities))
         return false;
     const roleKey = adminRole;
     return adminCapabilities[roleKey].includes(capability);
+};
+const creatableRolesByCreator = {
+    Super_Admin: [
+        AdminRole.Head_Admin,
+        AdminRole.Administration_Staff,
+        AdminRole.Market_in_Charge,
+        AdminRole.Accountable_Officer,
+    ],
+    Head_Admin: [
+        AdminRole.Administration_Staff,
+        AdminRole.Market_in_Charge,
+        AdminRole.Accountable_Officer,
+    ],
+    Administration_Staff: [AdminRole.Market_in_Charge, AdminRole.Accountable_Officer],
+    Market_in_Charge: [],
+    Accountable_Officer: [],
+};
+export const canCreateAdminRole = (creatorRole, targetRole) => {
+    if (!creatorRole || !(creatorRole in creatableRolesByCreator))
+        return false;
+    const roleKey = creatorRole;
+    return creatableRolesByCreator[roleKey].includes(targetRole);
 };
 export const requireAdminCapability = (capability) => {
     return async (c, next) => {

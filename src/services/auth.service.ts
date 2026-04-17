@@ -1,180 +1,219 @@
-import bcrypt from 'bcrypt';
 import { AccountStatus, Role } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma.js';
 import {
-  getLocalAccessTokenExpiresIn,
   getLocalAccessTokenExpiresInSeconds,
   signLocalAccessToken,
-  signLocalRefreshToken,
   verifyLocalRefreshToken,
 } from '../lib/local-auth.js';
+import {
+  sendSupabaseEmailOtp,
+  signInSupabaseWithEmailPassword,
+  supabaseAdminClient,
+  verifySupabaseEmailOtp,
+} from '../lib/supabase-auth.js';
 
-const PASSWORD_SALT_ROUNDS = 10;
-const OTP_SALT_ROUNDS = 8;
-const OTP_EXPIRY_MINUTES = 10;
-const OTP_MAX_ATTEMPTS = 5;
+const MIN_PASSWORD_LENGTH = 8;
 
 const normalizeIdentifier = (identifier: string) => identifier.trim();
 
-const shouldExposeDevCode = () => process.env.NODE_ENV !== 'production';
-
-const generateOtpCode = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+type AuthProfileRow = {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  username: string | null;
+  is_active: boolean;
+  role: string | null;
 };
 
 const validatePasswordPolicy = (password: string) => {
-  if (password.length < 8) {
-    throw new Error('Password must be at least 8 characters long');
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
   }
 };
 
-const findAccountByIdentifier = async (identifier: string) => {
+const asBoolean = (value: unknown, fallback: boolean) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return fallback;
+};
+
+const findProfileByIdentifier = async (identifier: string): Promise<AuthProfileRow | null> => {
   const normalized = normalizeIdentifier(identifier);
+
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+      select
+        ap.id,
+        ap.email,
+        ap.phone,
+        coalesce(
+          nullif(to_jsonb(ap)->>'username', ''),
+          ap.raw_user_meta_data->>'username'
+        ) as username,
+        coalesce(
+          (to_jsonb(ap)->>'is_active')::boolean,
+          (ap.raw_user_meta_data->>'is_active')::boolean,
+          true
+        ) as is_active,
+        coalesce(
+          nullif(to_jsonb(ap)->>'role', ''),
+          ap.raw_user_meta_data->>'role'
+        ) as role
+      from public.auth_profiles ap
+      where
+        lower(coalesce(nullif(to_jsonb(ap)->>'username', ''), ap.raw_user_meta_data->>'username', '')) = lower($1)
+        or lower(coalesce(ap.email, '')) = lower($1)
+        or coalesce(ap.phone, '') = $1
+      limit 1
+    `,
+    normalized
+  )) as Array<{
+    id: string;
+    email: string | null;
+    phone: string | null;
+    username: string | null;
+    is_active: boolean | string | null;
+    role: string | null;
+  }>;
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    email: row.email,
+    phone: row.phone,
+    username: row.username,
+    is_active: asBoolean(row.is_active, true),
+    role: row.role,
+  };
+};
+
+const findAccountForProfile = async (profile: AuthProfileRow) => {
+  const orConditions: Array<{ supabase_user_id?: string; email?: string; phone?: string }> = [
+    { supabase_user_id: profile.id },
+  ];
+
+  if (profile.email) {
+    orConditions.push({ email: profile.email });
+  }
+
+  if (profile.phone) {
+    orConditions.push({ phone: profile.phone });
+  }
 
   return prisma.account.findFirst({
     where: {
-      OR: [{ email: normalized }, { phone: normalized }],
+      OR: orConditions,
     },
     select: {
       account_id: true,
       email: true,
       phone: true,
-      password: true,
       role: true,
       account_status: true,
-      email_verified_at: true,
     },
   });
 };
 
-const consumeEmailVerificationCode = async (accountId: bigint, code: string) => {
-  const otpRecord = await prisma.account_email_verification_otp.findFirst({
-    where: {
-      account_id: accountId,
-      consumed_at: null,
-      expires_at: {
-        gt: new Date(),
-      },
-    },
-    orderBy: {
-      created_at: 'desc',
-    },
-  });
+const markProfileAsActive = async (profileId: string) => {
+  await prisma.$executeRawUnsafe(
+    `
+      update public.auth_profiles
+      set raw_user_meta_data = jsonb_set(
+            coalesce(raw_user_meta_data, '{}'::jsonb),
+            '{is_active}',
+            'true'::jsonb,
+            true
+          ),
+          updated_at = timezone('utc', now())
+      where id = $1
+    `,
+    profileId
+  );
 
-  if (!otpRecord) {
-    throw new Error('No valid verification code found. Request a new one.');
-  }
-
-  if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
-    await prisma.account_email_verification_otp.update({
-      where: { otp_id: otpRecord.otp_id },
-      data: {
-        consumed_at: new Date(),
-      },
-    });
-    throw new Error('Verification attempts exceeded. Request a new code.');
-  }
-
-  const isCodeValid = await bcrypt.compare(code, otpRecord.code_hash);
-
-  if (!isCodeValid) {
-    await prisma.account_email_verification_otp.update({
-      where: { otp_id: otpRecord.otp_id },
-      data: {
-        attempts: otpRecord.attempts + 1,
-      },
-    });
-
-    throw new Error('Invalid verification code');
-  }
-
-  await prisma.account_email_verification_otp.updateMany({
-    where: {
-      account_id: accountId,
-      consumed_at: null,
-    },
+  await prisma.account.updateMany({
+    where: { supabase_user_id: profileId },
     data: {
-      consumed_at: new Date(),
+      account_status: AccountStatus.Active,
+      email_verified_at: new Date(),
     },
   });
 };
 
 export const requestEmailVerificationCode = async (identifier: string) => {
-  const account = await findAccountByIdentifier(identifier);
+  const profile = await findProfileByIdentifier(identifier);
 
-  if (!account) {
+  if (!profile || !profile.email) {
     throw new Error('Account not found');
   }
 
-  if (account.account_status !== AccountStatus.Active) {
-    throw new Error('Account is not active');
+  if (profile.is_active) {
+    return {
+      message: 'Account is already active',
+      alreadyActive: true,
+    };
   }
 
-  await prisma.account_email_verification_otp.updateMany({
-    where: {
-      account_id: account.account_id,
-      consumed_at: null,
-    },
-    data: {
-      consumed_at: new Date(),
-    },
-  });
-
-  const otpCode = generateOtpCode();
-  const codeHash = await bcrypt.hash(otpCode, OTP_SALT_ROUNDS);
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-
-  await prisma.account_email_verification_otp.create({
-    data: {
-      account_id: account.account_id,
-      code_hash: codeHash,
-      expires_at: expiresAt,
-      created_at: new Date(),
-    },
-  });
+  await sendSupabaseEmailOtp(profile.email);
 
   return {
-    message: 'Email verification code generated',
-    expiresAt,
-    ...(shouldExposeDevCode() ? { verificationCode: otpCode } : {}),
+    message: 'Activation code sent',
   };
 };
 
 export const verifyEmailCode = async (identifier: string, code: string) => {
-  const account = await findAccountByIdentifier(identifier);
+  const profile = await findProfileByIdentifier(identifier);
 
-  if (!account) {
+  if (!profile || !profile.email) {
     throw new Error('Account not found');
   }
 
-  await consumeEmailVerificationCode(account.account_id, code);
-
-  await prisma.$transaction([
-    prisma.account.update({
-      where: {
-        account_id: account.account_id,
-      },
-      data: {
-        email_verified_at: new Date(),
-      },
-    }),
-  ]);
+  await verifySupabaseEmailOtp(profile.email, code);
+  await markProfileAsActive(profile.id);
 
   return {
-    message: 'Email verified successfully',
+    message: 'Account activated successfully',
   };
 };
 
 export const loginWithPassword = async (identifier: string, password: string) => {
-  const account = await findAccountByIdentifier(identifier);
+  const profile = await findProfileByIdentifier(identifier);
 
-  if (!account || !account.password) {
+  if (!profile || !profile.email) {
     throw new Error('Invalid credentials');
   }
 
-  const isPasswordValid = await bcrypt.compare(password, account.password);
-  if (!isPasswordValid) {
+  if (!profile.is_active) {
+    return {
+      ok: false as const,
+      status: 403 as const,
+      body: {
+        error: 'Account activation required',
+        needsActivation: true,
+      },
+    };
+  }
+
+  const signInResult = await signInSupabaseWithEmailPassword(profile.email, password);
+  if (!signInResult.ok || !signInResult.accessToken) {
     throw new Error('Invalid credentials');
+  }
+
+  const account = await findAccountForProfile(profile);
+
+  if (!account) {
+    return {
+      ok: false as const,
+      status: 403 as const,
+      body: {
+        error: 'Account mapping not found',
+      },
+    };
   }
 
   if (account.account_status !== AccountStatus.Active) {
@@ -187,32 +226,12 @@ export const loginWithPassword = async (identifier: string, password: string) =>
     };
   }
 
-  if (!account.email_verified_at) {
-    return {
-      ok: false as const,
-      status: 403 as const,
-      body: {
-        error: 'Email is not verified',
-        needsEmailVerification: true,
-      },
-    };
-  }
-
-  const accessToken = signLocalAccessToken({
-    accountId: account.account_id,
-    role: account.role,
-  });
-  const refreshToken = signLocalRefreshToken({
-    accountId: account.account_id,
-    role: account.role,
-  });
-
   return {
     ok: true as const,
     status: 200 as const,
     body: {
-      accessToken,
-      refreshToken,
+      accessToken: signInResult.accessToken,
+      refreshToken: signInResult.refreshToken,
       tokenType: 'Bearer',
       expiresIn: getLocalAccessTokenExpiresInSeconds(),
       account: {
@@ -220,13 +239,20 @@ export const loginWithPassword = async (identifier: string, password: string) =>
         role: account.role,
         email: account.email,
         phone: account.phone,
+        username: profile.username,
       },
     },
   };
 };
 
 export const requestAdminPasswordSetupCode = async (identifier: string) => {
-  const account = await findAccountByIdentifier(identifier);
+  const profile = await findProfileByIdentifier(identifier);
+
+  if (!profile || !profile.email) {
+    throw new Error('Account not found');
+  }
+
+  const account = await findAccountForProfile(profile);
 
   if (!account) {
     throw new Error('Account not found');
@@ -240,7 +266,17 @@ export const requestAdminPasswordSetupCode = async (identifier: string) => {
     throw new Error('Admin account is disabled');
   }
 
-  return requestEmailVerificationCode(identifier);
+  if (profile.is_active) {
+    return {
+      message: 'Account is already active',
+      alreadyActive: true,
+    };
+  }
+
+  await sendSupabaseEmailOtp(profile.email);
+  return {
+    message: 'Activation code sent',
+  };
 };
 
 export const createAdminPassword = async (
@@ -248,7 +284,13 @@ export const createAdminPassword = async (
   verificationCode: string,
   newPassword: string
 ) => {
-  const account = await findAccountByIdentifier(identifier);
+  const profile = await findProfileByIdentifier(identifier);
+
+  if (!profile || !profile.email) {
+    throw new Error('Account not found');
+  }
+
+  const account = await findAccountForProfile(profile);
 
   if (!account) {
     throw new Error('Account not found');
@@ -263,22 +305,24 @@ export const createAdminPassword = async (
   }
 
   validatePasswordPolicy(newPassword);
-  await consumeEmailVerificationCode(account.account_id, verificationCode);
-  const hashedPassword = await bcrypt.hash(newPassword, PASSWORD_SALT_ROUNDS);
+  await verifySupabaseEmailOtp(profile.email, verificationCode);
 
-  await prisma.account.update({
-    where: {
-      account_id: account.account_id,
-    },
-    data: {
-      password: hashedPassword,
-      email_verified_at: new Date(),
-      account_status: AccountStatus.Active,
-    },
+  if (!supabaseAdminClient) {
+    throw new Error('Supabase admin client is not configured');
+  }
+
+  const { error } = await supabaseAdminClient.auth.admin.updateUserById(profile.id, {
+    password: newPassword,
   });
 
+  if (error) {
+    throw new Error(error.message || 'Failed to set password');
+  }
+
+  await markProfileAsActive(profile.id);
+
   return {
-    message: 'Admin password created successfully',
+    message: 'Admin account activated successfully',
   };
 };
 

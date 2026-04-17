@@ -35,6 +35,7 @@ model businessOwner {
   business_owner_id BigInt     @id @default(autoincrement())
   account_id        BigInt     @unique
   first_name        String
+  middle_initial    String     @default("NA")
   last_name         String
   contact_number    String
   email             String
@@ -49,9 +50,23 @@ model business {
   business_id       BigInt        @id @default(autoincrement())
   business_owner_id BigInt
   stall_id          BigInt
+  stall_no          String
   business_name     String
+  section           String
   business_type     BusinessType
   lease_date        String
+  has_business_permit             Boolean
+  business_permit_name            String?
+  business_permit_line_of_business String?
+  business_permit_number          String?
+  business_permit_year            Int?
+  business_permit_no_reason       String?
+  has_health_card_permit          Boolean?
+  health_card_name                String?
+  health_card_number              String?
+  health_card_issue_date          String?
+  health_card_expiry_date         String?
+  health_card_no_reason           String?
   owner             businessOwner @relation(fields: [business_owner_id], references: [business_owner_id])
   products          product[]
   active_in_stalls  stall[]       @relation("stall_active_business")
@@ -761,6 +776,9 @@ model auth_profiles {
   id                 String     @id @db.Uuid
   email              String?
   phone              String?
+  username           String?    @unique
+  is_active          Boolean    @default(true)
+  role               String?
   raw_user_meta_data Json       @default("{}")
   created_at         DateTime   @default(dbgenerated("timezone('utc'::text, now())")) @db.Timestamptz(6)
   updated_at         DateTime   @default(dbgenerated("timezone('utc'::text, now())")) @db.Timestamptz(6)
@@ -800,6 +818,7 @@ enum AdminRole {
   Head_Admin
   Administration_Staff
   Market_in_Charge
+  Accountable_Officer
   Super_Admin
 
   @@schema("public")
